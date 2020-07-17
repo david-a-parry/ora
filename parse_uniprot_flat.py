@@ -3,7 +3,7 @@ import sys
 import gzip
 import re
 import logging
-from collections import defaultdict
+from Bio import SwissProt
 
 logger = logging.getLogger("UniprotParser")
 logger.setLevel(logging.INFO)
@@ -14,80 +14,129 @@ ch.setLevel(logger.level)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-acc_split =  re.compile(r';\s?')
-n_aa_re = re.compile(r'.*\s(\d+)\s+AA\.')
-iso_re = re.compile(r'IsoId=(\w+)(-\d+);.*Sequence=(.*);')
+iso_re = re.compile(r'IsoId=(\w+)(-\d+); Sequence=(.*?);')
+var_seq_re = re.compile(r'[A-Z]+ -> ([A-Z]+) ')
+feature_outputs = {'CROSSLNK', 'LIPID', 'MOD_RES', 'MUTAGEN' 'SITE', 'VARIANT'}
 
-def parse_uniprot_flat(data):
-    pids = []
-    match = n_aa_re.match(data['ID'][0])
-    if not match:
-        logger.warning("Could not parse data starting {}".format(data[0]))
-        return
-    else:
-        p_length = match.group(1)
-    for acc in data['AC']:
-        accessions = [x for x in acc_split.split(match.group(1)) if x]
-    if not accessions:
-        logger.warning("Could not parse data starting {}".format(data['ID']))
-        return
-    seq = ''.join(x.replace(' ', '') for x in data['SQ'][0].split("\n")[1:])
+
+def parse_record(record, featfile, seqfile, ensfile):
+    var_seqs = get_var_seqs(record)
     canonical = None
+    display_isoform = None
     isoforms = dict()
-    if len(accessions) > 1:
-        for match in filter(None, (iso_re.match(x) for x in data['CC'])):
-            if match.group(3) == 'Displayed':
-                canonical = match.group(1)
-                isoforms[match.group(1) + match.group(2)] = seq
+    for match in (z for y in filter(None, (iso_re.findall(x)
+                                           for x in record.comments))
+                  for z in y):
+        if match[2] == 'Displayed':
+            canonical = match[0]
+            display_isoform = match[0] + match[1]
+            isoforms[display_isoform] = record.sequence
+        elif match[2] == 'External' or match[2] == 'Not described':
+            continue
+        else:
+            iso = match[0] + match[1]
+            isoforms[iso] = construct_seq(iso,
+                                          record.sequence,
+                                          match[2],
+                                          var_seqs)
+    if not canonical:
+        canonical = record.accessions[0]
+        display_isoform = canonical
+        isoforms[canonical] = record.sequence
+    for xref in (x for x in record.cross_references if x[0] == 'Ensembl'):
+        enst = xref[1]
+        ensp = xref[2]
+        ensgplus = xref[3].split('. ', maxsplit=1)
+        ensg = ensgplus[0]
+        if len(ensgplus) > 1:
+            isos = ensgplus[1].strip('[]').split(', ')
+        else:
+            isos = [canonical]
+        for iso in isos:
+            ensfile.write("\t".join((canonical,
+                                     ensg,
+                                     enst,
+                                     ensp,
+                                     iso)) + "\n")
+    for iso, seq in isoforms.items():
+        seqfile.write("\t".join((canonical,
+                                 iso,
+                                 str(int(iso == display_isoform)),
+                                 seq)) + "\n")
+    for ft in (x for x in record.features if x.type in feature_outputs):
+        featfile.write("\t".join((canonical,
+                                  ft.type,
+                                  str(ft.location.start + 1),
+                                  str(ft.location.end),
+                                  ft.qualifiers['note'])) + "\n")
+
+
+def get_var_seqs(record):
+    varseqs = dict()
+    for ft in [x for x in record.features if x.type == 'VAR_SEQ']:
+        if ft.qualifiers['note'].startswith('Missing'):
+            seq = ''
+        else:
+            seq_match = var_seq_re.match(ft.qualifiers['note'])
+            if seq_match:
+                seq = seq_match.group(1)
             else:
-                isoforms[match.group(1) + match.group(2)] = construct_seq(
-                    seq, match.group(3))
-
-    else:
-        canonical = accessions[0]
-    var_seqs = get_var_seqs(data)
-
-    #TODO
-
-def get_var_seqs(data):
-    for ft in data['FT']:
-        pass #TODO
-
-def construct_seq(seq, mods):
-    mods = mods.split(', ')
-    #TODO
+                logger.warn("Could not parse VAR_SEQ: {}".format(ft.id))
+                continue
+        if ft.id in varseqs:
+            logger.warn("Duplicate VAR_SEQ ID '{}'".format(ft.id))
+        else:
+            varseqs[ft.id] = dict(start=int(ft.location.start),  # 0-based
+                                  stop=int(ft.location.end),  # end inclusive
+                                  seq=seq)
+    return varseqs
 
 
-def main(f):
+def construct_seq(isoform, seq, mods, variants):
+    vars = []
+    for mod in mods.split(', '):
+        var = variants.get(mod.strip())
+        if var is None:
+            logger.warn("Got unexpected VAR_SEQ: '{}' ".format(mod) +
+                        "for isoform '{}'".format(isoform))
+            continue
+        vars.append(var)
+    # Apply variants starting from end of sequence because coordinates relate
+    # to reference sequence
+    vars.sort(key=lambda x: (x['start'], x['stop']), reverse=True)
+    for var in vars:
+        seq = seq[:var['start']] + var['seq'] + seq[var['stop']:]
+    return seq
+
+
+def main(f, prefix, progress_interval=10000, use_gzip=True):
     open_func = open
     if f.endswith(".gz"):
         open_func = gzip.open
-    data = defaultdict(list)
-    current_data = ''
-    current_key = ''
-    with open_func(f, 'rt') as infile:
+    write_func = gzip.open if use_gzip else open
+    suffix = 'tab.gz' if use_gzip else 'tab'
+    feat_fh = write_func(prefix + '.features.' + suffix, 'wt')
+    seq_fh = write_func(prefix + '.isoform_seqs.' + suffix, 'wt')
+    ens_fh = write_func(prefix + '.ens_ids.' + suffix, 'wt')
+    seq_fh.write("\t".join("UniprotID Isoform Displayed Seq".split()) + "\n")
+    ens_fh.write("\t".join('''UniprotID Gene Transcript Protein
+                              Isoform'''.split()) + "\n")
+    feat_fh.write("\t".join('''UniprotID Feature Start Stop
+                               Description'''.split()) + "\n")
+    with open_func(f, 'rt') as filehandle:
         n = 0
-        for line in infile:
+        for record in SwissProt.parse(filehandle):
+            parse_record(record, feat_fh, seq_fh, ens_fh)
             n += 1
-            line = line.rstrip()
-            if line == '//':
-                if not data:
-                    raise ValueError("Encountered record separator without " +
-                                     "any preceding data at line {}".format(n))
-                if current_data:
-                    data[current_key].append(current_data)
-                parse_uniprot_flat(data)
-                data.clear()
-            elif line.startswith(' '):
-                current_data += '\n{}'.format(line)
-            else:
-                if current_data:
-                    data[current_key].append(current_data)
-                current_key, current_data = line.split(maxsplit=1)
-    if data:
-        parse_uniprot_flat(data)
+            if n % progress_interval == 0:
+                logger.info("Processed {:,} records".format(n))
+    for fh in (seq_fh, feat_fh, ens_fh):
+        fh.close()
+    logger.info("Finished - processed {:,} records".format(n))
+
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        sys.exit("Usage: {} uniprot_sprot.dat.gz".format(sys.argv[0]))
-    main(sys.argv[1])
+    if len(sys.argv) != 3:
+        sys.exit("Usage: {} <uniprot_sprot.dat.gz> <output_prefix>".format(
+            sys.argv[0]))
+    main(*sys.argv[1:])
