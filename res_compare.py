@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import sys
-import requests
 from collections import namedtuple
 from ensembl_rest_queries import EnsemblRestQueries
 
@@ -8,13 +7,14 @@ ParalogLookup = namedtuple("ParalogLookup", "gene protein position")
 
 
 def get_align_pos(seq, p):
-     x = 0
-     for i in range(len(seq)):
-        if seq[i] == '-': continue
+    x = 0
+    for i in range(len(seq)):
+        if seq[i] == '-':
+            continue
         x += 1
         if x == p:
             return i
-     return -1
+    return -1
 
 
 def get_p_pos(seq, i):
@@ -48,7 +48,6 @@ def main(ensg, pos, paralog_lookups=True):
                                     skip_paralogs=True)
 
 
-
 def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False):
     paralogs = []
     for i in range(len(data['data'][0]['homologies'])):
@@ -69,7 +68,7 @@ def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False):
         o = get_p_pos(t_seq, p) if p > 0 else -1
         if 'paralog' in hom_type and o > 0:
             paralogs.append(ParalogLookup(t_id, t_protein, o))
-        print("\t".join(str(x) for x in(
+        print("\t".join(str(x) for x in (
             s_id,
             s_protein,
             pos,
@@ -80,6 +79,7 @@ def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False):
             data['data'][0]['homologies'][i]['target']['perc_id'],
             o)))
     return paralogs
+
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
