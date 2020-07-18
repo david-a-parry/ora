@@ -101,8 +101,8 @@ def construct_seq(isoform, seq, mods, variants):
                         "for isoform '{}'".format(isoform))
             continue
         vars.append(var)
-    # Apply variants starting from end of sequence because coordinates relate
-    # to reference sequence
+    # Apply variants starting from end of sequence, else mod coordinates will
+    # not be accurate for downstream modifications anymore
     vars.sort(key=lambda x: (x['start'], x['stop']), reverse=True)
     for var in vars:
         seq = seq[:var['start']] + var['seq'] + seq[var['stop']:]
