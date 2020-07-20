@@ -6,6 +6,7 @@ from collections import namedtuple
 from ensembl_rest_queries import EnsemblRestQueries
 from id_parser import parse_id
 from uniprot_lookups import get_uniprot_features
+from uniprot_lookups import logger as unipro_logger
 
 ParalogLookup = namedtuple("ParalogLookup", "gene protein position")
 feat_fields = ['UniprotID', 'Start', 'Stop', 'Feature', 'Description']
@@ -13,7 +14,6 @@ ens_rest = EnsemblRestQueries()
 ensg2symbol = dict()
 
 logger = logging.getLogger("ORA")
-#logger.setLevel(logging.INFO)
 logger.setLevel(logging.INFO)
 formatter = logging.Formatter(
     '[%(asctime)s] %(name)s - %(levelname)s - %(message)s')
@@ -69,23 +69,29 @@ def get_gene_details(x, species='human'):
 
 
 def main(gene, pos, paralog_lookups=False, timeout=10.0, max_retries=2,
-         all_homologs=False):
-    try:
-        pos = int(pos)
-    except ValueError:
-        sys.exit("ERROR: Position argument must be an integer\n")
+         all_homologs=False, quiet=False, debug=False, silent=False):
+    if silent:
+        logger.setLevel(logging.ERROR)
+    elif quiet:
+        logger.setLevel(logging.WARN)
+    elif debug:
+        logger.setLevel(logging.DEBUG)
+    ens_rest.logger.setLevel(logger.level)
+    unipro_logger.setLevel(logger.level)
     ensg = get_gene_details(gene)
     if ensg != gene:
         logger.info("Got Ensembl Gene ID '{}'".format(ensg))
     data = ens_rest.get_homologies(ensg)
     if data is None:
         sys.exit("ERROR: Could not find ensembl gene '{}'".format(ensg))
-    print("\t".join('''Query_Symbol Query_Gene Query_Protein Query_Pos 
-                       Query_Res Homolog_Symbol Homolog_Gene Homolog_Protein
-                       Homolog_Type Species %ID Homolog_Pos Homolog_Res'''
-                    .split() + feat_fields))
-    paralogs = parse_homology_data(data, pos,
-                                   output_all_orthologs=all_homologs)
+    header_fields = '''Query_Symbol Query_Gene Query_Protein Query_Pos 
+                       Query_AA Homolog_Symbol Homolog_Gene Homolog_Protein
+                       Orthology_Type Species Percent_ID Homolog_Pos
+                       Homolog_AA'''.split()
+    print("\t".join(header_fields + feat_fields))
+    results, paralogs = parse_homology_data(data,
+                                            pos,
+                                            output_all_orthologs=all_homologs)
     if paralog_lookups:
         for i in range(len(paralogs)):
             logger.info("Parsing paralog {:,} of {:,}".format(i + 1,
@@ -218,6 +224,12 @@ def get_options():
     parser.add_argument("--max_retries", type=int, default=2,
                         help='''Maximum retry attempts for Ensembl REST 
                         queries. Default=2''')
+    parser.add_argument("--debug", action='store_true',
+                        help='Add debugging messages to output.')
+    parser.add_argument("--quiet", action='store_true',
+                        help='Only output warning logger messages.')
+    parser.add_argument("--silent", action='store_true',
+                        help='Only output error logger messages.')
     return parser
 
 
