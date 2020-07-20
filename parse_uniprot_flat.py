@@ -16,7 +16,8 @@ logger.addHandler(ch)
 
 iso_re = re.compile(r'IsoId=(\w+)(-\d+); Sequence=(.*?);')
 var_seq_re = re.compile(r'[A-Z]+ -> ([A-Z]+) ')
-feature_outputs = {'CROSSLNK', 'LIPID', 'MOD_RES', 'MUTAGEN' 'SITE', 'VARIANT'}
+feature_outputs = {'CROSSLNK', 'LIPID', 'MOD_RES', 'MUTAGEN', 'SITE',
+                   'VARIANT'}
 
 
 def parse_record(record, featfile, seqfile, ensfile):
