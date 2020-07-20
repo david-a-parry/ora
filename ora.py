@@ -128,17 +128,6 @@ def lookup_symbols(ensgs):
     return dict()
 
 
-def lookup_symbol(ensg):
-    try:
-        data = ens_rest.lookup_id(ensg)
-        ensg2symbol[ensg] = data.get('display_name', 'N/A') if data else None
-    except requests.exceptions.ReadTimeout:
-        logger.warn("Timeout error while attempting to retrieve symbol for {}"
-                    .format(ensg))
-        ensg2symbol[ensg] = 'FAILED'
-    return ensg2symbol[ensg]
-
-
 def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False,
                         output_all_orthologs=False):
     paralogs = []
