@@ -10,8 +10,8 @@ class EnsemblRestQueries(object):
     '''Perform lookups using Ensembl's REST API'''
 
     def __init__(self, use_grch37_server=False, custom_server=None,
-                 timeout=10.0, max_retries=2, reqs_per_sec=5,
-                 log_level=logging.INFO):
+                 timeout=10.0, post_timeout=120.0, max_retries=2,
+                 reqs_per_sec=5, log_level=logging.INFO):
         self._set_logger(logging_level=log_level)
         self.reqs_per_sec = reqs_per_sec
         self.req_count = 0
@@ -23,9 +23,14 @@ class EnsemblRestQueries(object):
         else:
             self.server = server
         self.timeout = timeout
+        self.post_timeout = post_timeout
         self.max_retries = max_retries
 
-    def get_endpoint(self, endpoint, attempt=0):
+    def get_endpoint(self, endpoint, attempt=0, data=None):
+        '''
+            Provide an endpoint to lookup at REST server. For POST lookups
+            provide data argument as per rest.ensembl.org examples.
+        '''
         # check if we need to rate limit ourselves
         if self.req_count >= self.reqs_per_sec:
             delta = time.time() - self.last_req
@@ -35,8 +40,16 @@ class EnsemblRestQueries(object):
             self.last_req = time.time()
             self.req_count = 0
         self.logger.debug("Retrieving {}".format(self.server+endpoint))
-        r = requests.get(self.server+endpoint, timeout=self.timeout,
-                         headers={"Content-Type": "application/json"})
+        headers = {"Content-Type": "application/json"}
+        if data:
+            import pdb
+            pdb.set_trace()
+            headers['Accept'] = "application/json"
+            r = requests.post(self.server+endpoint, timeout=self.post_timeout,
+                             headers=headers, data=data)
+        else:
+            r = requests.get(self.server+endpoint, timeout=self.timeout,
+                            headers=headers)
         self.req_count += 1
         if not r.ok:
             if attempt < self.max_retries:
