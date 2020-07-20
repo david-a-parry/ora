@@ -51,7 +51,7 @@ def parse_record(record, featfile, seqfile, ensfile):
         if len(ensgplus) > 1:
             isos = ensgplus[1].strip('[]').split(', ')
         else:
-            isos = [canonical]
+            isos = [display_isoform]
         for iso in isos:
             ensfile.write("\t".join((canonical,
                                      ensg,
