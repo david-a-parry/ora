@@ -5,11 +5,12 @@ import logging
 server = "https://rest.ensembl.org"
 grch37_server = "http://grch37.rest.ensembl.org/"
 
+
 class EnsemblRestQueries(object):
     '''Perform lookups using Ensembl's REST API'''
 
     def __init__(self, use_grch37_server=False, custom_server=None,
-                 timeout=5.0, max_retries=2, reqs_per_sec=5,
+                 timeout=10.0, max_retries=2, reqs_per_sec=5,
                  log_level=logging.INFO):
         self._set_logger(logging_level=log_level)
         self.reqs_per_sec = reqs_per_sec
@@ -35,12 +36,13 @@ class EnsemblRestQueries(object):
             self.req_count = 0
         self.logger.debug("Retrieving {}".format(self.server+endpoint))
         r = requests.get(self.server+endpoint, timeout=self.timeout,
-                         headers={ "Content-Type" : "application/json"})
+                         headers={"Content-Type": "application/json"})
         self.req_count += 1
         if not r.ok:
             if attempt < self.max_retries:
                 attempt += 1
-                self.logger.info("Retry {}/{}".format(attempt,self.max_retries)
+                self.logger.info("Retry {}/{}".format(attempt,
+                                                      self.max_retries)
                                  + " for {}".format(self.server+endpoint))
                 return self.get_endpoint(endpoint, attempt=attempt)
             r.raise_for_status()
@@ -59,9 +61,8 @@ class EnsemblRestQueries(object):
         endp = "/homology/id/{}?".format(query)
         return self.get_endpoint(endp)
 
-
     def lookup_id(self, query, expand='0', phenotypes='0'):
-        return self.get_endpoint("/lookup/id/"+query+"?expand="+expand+
+        return self.get_endpoint("/lookup/id/"+query+"?expand=" + expand +
                                  ";phenotypes="+phenotypes)
 
     def get_parent(self, query, expand='0'):
@@ -108,4 +109,3 @@ class EnsemblRestQueries(object):
         ch.setLevel(self.logger.level)
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
-
