@@ -154,7 +154,7 @@ def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False,
                                   homolog_gene=s_id,
                                   homolog_protein=s_protein,
                                   orthology_type="self",
-                                  species=homs[i]['target']['species'],
+                                  species=homs[i]['source']['species'],
                                   percent_id=100,
                                   homolog_pos=pos,
                                   homolog_aa=s_seq[p],
@@ -191,7 +191,8 @@ def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False,
                     results.append(result)
             elif output_all_orthologs:
                 result = result_template.copy()
-                result['features'] = None
+                result['features'] = dict((x, '-') for x in feat_fields)
+                results.append(result)
             uniprot_lookups.add((t_protein, o))
     if not skip_paralogs:
         logger.info("Got {} paralog sequences".format(len(paralogs)))
