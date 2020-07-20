@@ -57,7 +57,8 @@ def parse_record(record, featfile, seqfile, ensfile):
                                      ensg,
                                      enst,
                                      ensp,
-                                     iso)) + "\n")
+                                     iso,
+                                     str(int(iso == display_isoform)))) + "\n")
     for iso, seq in isoforms.items():
         seqfile.write("\t".join((canonical,
                                  iso,
@@ -120,7 +121,7 @@ def main(f, prefix, progress_interval=10000, use_gzip=True):
     ens_fh = write_func(prefix + '.ens_ids.' + suffix, 'wt')
     seq_fh.write("\t".join("UniprotID Isoform Displayed Seq".split()) + "\n")
     ens_fh.write("\t".join('''UniprotID Gene Transcript Protein
-                              Isoform'''.split()) + "\n")
+                              Isoform Displayed'''.split()) + "\n")
     feat_fh.write("\t".join('''UniprotID Feature Start Stop
                                Description'''.split()) + "\n")
     with open_func(f, 'rt') as filehandle:
