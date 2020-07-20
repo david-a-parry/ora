@@ -42,14 +42,12 @@ class EnsemblRestQueries(object):
         self.logger.debug("Retrieving {}".format(self.server+endpoint))
         headers = {"Content-Type": "application/json"}
         if data:
-            import pdb
-            pdb.set_trace()
             headers['Accept'] = "application/json"
             r = requests.post(self.server+endpoint, timeout=self.post_timeout,
                              headers=headers, data=data)
         else:
             r = requests.get(self.server+endpoint, timeout=self.timeout,
-                            headers=headers)
+                             headers=headers)
         self.req_count += 1
         if not r.ok:
             if attempt < self.max_retries:

@@ -107,14 +107,14 @@ def main(gene, pos, paralog_lookups=False, timeout=10.0, max_retries=2,
                                                protein_id=paralogs[i].protein,
                                                skip_paralogs=True)
             results.extend(p_results)
-    symbol_lookups = set(x['target_id'] for x in results)
-    symbol_lookups.update(x['source_id'] for x in results)
+    symbol_lookups = set(x['homolog_gene'] for x in results)
+    symbol_lookups.update(x['query_gene'] for x in results)
     ensg2symbol = lookup_symbols(symbol_lookups)
     for res in results:
-        res['query_symbol'] = ensg2symbol.get(res['query_id'], '-')
-        res['homolog_symbol'] = ensg2symbol.get(res['homolog_id'], '-')
+        res['query_symbol'] = ensg2symbol.get(res['query_gene'], '-')
+        res['homolog_symbol'] = ensg2symbol.get(res['homolog_gene'], '-')
         line = [str(res[x.lower()]) for x in header_fields] + \
-               [str(res['features'][f]) for x in feat_fields]
+               [str(res['features'][x]) for x in feat_fields]
         print("\t".join(line))
 
 
@@ -126,17 +126,6 @@ def lookup_symbols(ensgs):
         return dict((k, v.get('display_name', '-')) for k, v in data.items())
     logger.warn("No gene symbols found by POST lookup")
     return dict()
-
-
-def lookup_symbol(ensg):
-    try:
-        data = ens_rest.lookup_id(ensg)
-        ensg2symbol[ensg] = data.get('display_name', 'N/A') if data else None
-    except requests.exceptions.ReadTimeout:
-        logger.warn("Timeout error while attempting to retrieve symbol for {}"
-                    .format(ensg))
-        ensg2symbol[ensg] = 'FAILED'
-    return ensg2symbol[ensg]
 
 
 def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False,
@@ -154,7 +143,6 @@ def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False,
         s_seq = homs[i]['source']['align_seq']
         t_seq = homs[i]['target']['align_seq']
         p = get_align_pos(s_seq, pos)
-        s_symbol = ensg2symbol.get(s_id, lookup_symbol(s_id))
         if (s_protein, pos) not in uniprot_lookups:
             ufeats = get_uniprot_features(s_protein, pos, pos)
             if ufeats:
@@ -162,15 +150,15 @@ def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False,
                     result = dict(query_gene=s_id,
                                   query_protein=s_protein,
                                   query_pos=pos,
-                                  query_AA=s_seq[p],
+                                  query_aa=s_seq[p],
                                   homolog_gene=s_id,
                                   homolog_protein=s_protein,
                                   orthology_type="self",
-                                  species=homs[i]['target']['species'],
+                                  species=homs[i]['source']['species'],
                                   percent_id=100,
                                   homolog_pos=pos,
-                                  homolog_AA=s_seq[p],
-                                  feats=f)
+                                  homolog_aa=s_seq[p],
+                                  features=f)
                     results.append(result)
             uniprot_lookups.add((s_protein, pos))
         if protein_id is not None and s_protein != protein_id:
@@ -184,17 +172,17 @@ def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False,
         if 'paralog' in hom_type and o > 0:
             paralogs.append(ParalogLookup(t_id, t_protein, o))
         if o > 0 and (t_protein, o) not in uniprot_lookups:
-            result_template = dict(query_id=s_id,
+            result_template = dict(query_gene=s_id,
                                    query_protein=s_protein,
                                    query_pos=pos,
-                                   query_AA=s_seq[p],
-                                   homolog_id=s_id,
-                                   homolog_protein=s_protein,
+                                   query_aa=s_seq[p],
+                                   homolog_gene=t_id,
+                                   homolog_protein=t_protein,
                                    orthology_type="self",
                                    species=homs[i]['target']['species'],
                                    percent_id=homs[i]['target']['perc_id'],
                                    homolog_pos=o,
-                                   homolog_AA=aa)
+                                   homolog_aa=aa)
             ufeats = get_uniprot_features(t_protein, o, o)
             if ufeats:
                 for f in ufeats:
@@ -203,7 +191,8 @@ def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False,
                     results.append(result)
             elif output_all_orthologs:
                 result = result_template.copy()
-                result['features'] = None
+                result['features'] = dict((x, '-') for x in feat_fields)
+                results.append(result)
             uniprot_lookups.add((t_protein, o))
     if not skip_paralogs:
         logger.info("Got {} paralog sequences".format(len(paralogs)))
@@ -231,7 +220,7 @@ def get_options():
                         help='''Lookup timeout (in seconds) for Ensembl REST
                         queries. Default=10''')
     parser.add_argument("--max_retries", type=int, default=2,
-                        help='''Maximum retry attempts for Ensembl REST 
+                        help='''Maximum retry attempts for Ensembl REST
                         queries. Default=2''')
     parser.add_argument("--debug", action='store_true',
                         help='Add debugging messages to output.')
