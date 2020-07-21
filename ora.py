@@ -2,11 +2,11 @@
 import sys
 import logging
 import argparse
-from collections import namedtuple
-from ensembl_rest_queries import EnsemblRestQueries
-from id_parser import parse_id
-from uniprot_lookups import get_uniprot_features
-from uniprot_lookups import logger as unipro_logger
+from collections import namedtuple, defaultdict
+from ora.ensembl_rest_queries import EnsemblRestQueries
+from ora.id_parser import parse_id
+from ora.uniprot_lookups import get_uniprot_features
+from ora.uniprot_lookups import logger as unipro_logger
 
 ParalogLookup = namedtuple("ParalogLookup", "gene protein position")
 feat_fields = ['UniprotID', 'Start', 'Stop', 'Feature', 'Description']
