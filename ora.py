@@ -60,9 +60,9 @@ def get_gene_details(x, species='human'):
         data = ens_rest.get_via_xref(x, species, 'gene')
         if data:
             if len(data) > 1:
-                logger.warn("Multiple genes identified for input '{}'"
+                logger.warning("Multiple genes identified for input '{}'"
                             .format(x))
-                logger.warn("Using ID from first of multiple lookups ({})"
+                logger.warning("Using ID from first of multiple lookups ({})"
                             .format(data[0]['id']))
             return data[0]['id']
     sys.exit("FAILED: Could not retrieve Ensembl gene ID for input '{}'"
@@ -125,7 +125,7 @@ def lookup_symbols(ensgs):
     data = ens_rest.get_endpoint("/lookup/id", data=datastring)
     if data:
         return dict((k, v.get('display_name', '-')) for k, v in data.items())
-    logger.warn("No gene symbols found by POST lookup")
+    logger.warning("No gene symbols found by POST lookup")
     return dict()
 
 
