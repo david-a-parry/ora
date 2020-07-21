@@ -103,11 +103,15 @@ def main(gene, pos, paralog_lookups=False, timeout=10.0, max_retries=2,
                 sys.stderr.write("Error looking up paralog {}: {}".format(
                     paralogs[i].gene,
                     e))
+                continue
             p_results, _ = parse_homology_data(pdata,
                                                paralogs[i].position,
                                                protein_id=paralogs[i].protein,
                                                skip_paralogs=True)
             results.extend(p_results)
+    if not results:
+        logger.info("No results for {} position {}".format(gene, pos))
+        sys.exit()
     symbol_lookups = set(x['homolog_gene'] for x in results)
     symbol_lookups.update(x['query_gene'] for x in results)
     ensg2symbol = lookup_symbols(symbol_lookups)
@@ -164,7 +168,7 @@ def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False,
         if protein_id is not None and s_protein != protein_id:
             logger.info("Skipping paralog lookup for protein {}\n".format(
                 protein_id))
-            return paralogs
+            return results, paralogs
         hom_type = homs[i]['type']
         if skip_paralogs and 'paralog' in hom_type:
             continue
