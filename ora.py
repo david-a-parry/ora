@@ -97,21 +97,26 @@ def main(gene, pos, paralog_lookups=False, timeout=10.0, max_retries=2,
                                             pos,
                                             output_all_orthologs=all_homologs)
     if paralog_lookups:
-        for i in range(len(paralogs)):
-            logger.info("Parsing paralog {:,} of {:,}".format(i + 1,
-                                                              len(paralogs)))
+        n_paralogs = len(paralogs.keys())
+        i = 0
+        for gene_id, paralog_list in paralogs.items():
+            i += 1
+            logger.info("Parsing paralog {:,} of {:,}".format(i, n_paralogs))
             try:
-                pdata = ens_rest.get_homologies(paralogs[i].gene)
+                pdata = ens_rest.get_homologies(gene_id)
             except Exception as e:
-                sys.stderr.write("Error looking up paralog {}: {}".format(
-                    paralogs[i].gene,
-                    e))
+                logger.warning("Error looking up paralog {}: {}".format(
+                    gene_id, e))
                 continue
-            p_results, _ = parse_homology_data(pdata,
-                                               paralogs[i].position,
-                                               protein_id=paralogs[i].protein,
-                                               skip_paralogs=True)
-            results.extend(p_results)
+            pro2pos = defaultdict(list)
+            for para in paralog_list:
+                pro2pos[para.protein].append(para.position)
+            for protein, positions in pro2pos.items():
+                p_results, _ = parse_homology_data(pdata,
+                                                   positions,
+                                                   protein_id=protein,
+                                                   skip_paralogs=True)
+                results.extend(p_results)
     if not results:
         logger.info("No results for {} position {}".format(gene, pos))
         sys.exit()
@@ -129,30 +134,52 @@ def main(gene, pos, paralog_lookups=False, timeout=10.0, max_retries=2,
         print("\t".join(line))
 
 
-def write_alignments(results, fh, gene2symbol, linelen=60):
+def seq_and_pos_from_results(results):
+    pairs = dict()
     for res in (x for x in results if 'query_seq' in x):
-        qsymbol = gene2symbol.get(res['query_gene'], '?')
-        hsymbol = gene2symbol.get(res['homolog_gene'], '?')
-        header = "|{} vs {} ({} {} vs {} {})|".format(res['query_protein'],
-                                                  res['homolog_protein'],
-                                                  qsymbol,
-                                                  res['query_species'],
-                                                  hsymbol,
-                                                  res['species'])
-        
+        align_pos = get_align_pos(res['query_seq'], res['query_pos'])
+        k = (res['query_gene'], res['homolog_gene'])
+        if k not in pairs:
+            pairs[k] = dict(align_positions=set(), query_positions=set())
+            for x in ('query_species', 'species', 'query_protein', 'query_seq',
+                      'homolog_protein', 'homolog_seq'):
+                pairs[k][x] = res[x]
+        pairs[k]['align_positions'].add(align_pos)
+        pairs[k]['query_positions'].add(res['query_pos'])
+    for k in pairs:
+        for p in ('align_positions', 'query_positions'):
+            pairs[k][p] = sorted(pairs[k][p])
+    return pairs
+
+
+def write_alignments(results, fh, gene2symbol, linelen=60):
+    for query_hom, res in seq_and_pos_from_results(results).items():
+        query_gene, hom_gene = query_hom
+        qsymbol = gene2symbol.get(query_gene, '?')
+        hsymbol = gene2symbol.get(hom_gene, '?')
+        header = "|{} {} vs {} {} position ".format(
+            qsymbol, res['query_species'], hsymbol, res['species']) + \
+            ",".join(str(x) for x in res['query_positions']) + "|"
         lmargin = max(len(res['query_protein']), len(res['homolog_protein']))
         fh.write('-' * len(header) + "\n")
         fh.write(header + "\n")
         fh.write('-' * len(header) + "\n")
-        for i in range(0, len(res['query_seq']), linelen):
-            fh.write("{:>{fill}}: {}\n".format(
-                res['query_protein'],
-                res['query_seq'][i:i+linelen],
-                fill=lmargin))
-            fh.write("{:>{fill}}: {}\n\n".format(
-                res['homolog_protein'],
-                res['homolog_seq'][i:i+linelen],
-                fill=lmargin))
+        qlen = len(res['query_seq'])
+        for i in range(0, qlen, linelen):
+            fh.write("{:>{fill}}: {}\n".format(res['query_protein'],
+                                               res['query_seq'][i:i+linelen],
+                                               fill=lmargin))
+            fh.write("{:>{fill}}: {}\n".format(res['homolog_protein'],
+                                               res['homolog_seq'][i:i+linelen],
+                                               fill=lmargin))
+            for align_pos in res['align_positions']:
+                if i <= align_pos < i + linelen:  # pos on current line
+                    l_pos = align_pos - i
+                    l_pad = lmargin + 2
+                    r_pad = min(linelen, qlen - i) - l_pos - 1
+                    fh.write(' ' * l_pad + '=' * l_pos + '^' + '=' * r_pad +
+                             '\n')
+            fh.write("\n")
         fh.write("\n")
 
 
@@ -166,76 +193,78 @@ def lookup_symbols(ensgs):
     return dict()
 
 
-def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False,
+def parse_homology_data(data, positions, protein_id=None, skip_paralogs=False,
                         output_all_orthologs=False):
-    paralogs = []
+    paralogs = defaultdict(list)
     results = []
     homs = data['data'][0]['homologies']
     logger.info("Got {:,} homologs".format(len(homs)))
-    for i in range(len(homs)):
-        s_id = homs[i]['source']['id']
-        t_id = homs[i]['target']['id']
-        s_protein = homs[i]['source']['protein_id']
-        t_protein = homs[i]['target']['protein_id']
-        s_seq = homs[i]['source']['align_seq']
-        t_seq = homs[i]['target']['align_seq']
-        p = get_align_pos(s_seq, pos)
-        if (s_protein, pos) not in uniprot_lookups:
-            ufeats = get_uniprot_features(s_protein, pos, pos)
-            if ufeats:
-                for f in ufeats:
-                    result = dict(query_gene=s_id,
-                                  query_protein=s_protein,
-                                  query_pos=pos,
-                                  query_aa=s_seq[p],
-                                  homolog_gene=s_id,
-                                  homolog_protein=s_protein,
-                                  orthology_type="self",
-                                  species=homs[i]['source']['species'],
-                                  percent_id=100,
-                                  percent_pos=100,
-                                  homolog_pos=pos,
-                                  homolog_aa=s_seq[p],
-                                  features=f)
-                    results.append(result)
-            uniprot_lookups.add((s_protein, pos))
-        if protein_id is not None and s_protein != protein_id:
-            logger.info("Skipping paralog lookup for protein {}\n".format(
-                protein_id))
-            return results, paralogs
-        hom_type = homs[i]['type']
-        if skip_paralogs and 'paralog' in hom_type:
-            continue
-        o, aa = align_pos_to_amino_acid(t_seq, p) if p > 0 else (-1, '-')
-        if 'paralog' in hom_type and o > 0:
-            paralogs.append(ParalogLookup(t_id, t_protein, o))
-        if o > 0 and (t_protein, o) not in uniprot_lookups:
-            result_template = dict(query_gene=s_id,
-                                   query_protein=s_protein,
-                                   query_pos=pos,
-                                   query_aa=s_seq[p],
-                                   homolog_gene=t_id,
-                                   homolog_protein=t_protein,
-                                   orthology_type="self",
-                                   species=homs[i]['target']['species'],
-                                   percent_id=homs[i]['target']['perc_id'],
-                                   percent_pos=homs[i]['target']['perc_pos'],
-                                   homolog_pos=o,
-                                   query_seq=s_seq,
-                                   homolog_seq=t_seq,
-                                   query_species=homs[i]['source']['species'],
-                                   homolog_aa=aa)
-            ufeats = get_uniprot_features(t_protein, o, o)
-            if ufeats:
-                for f in ufeats:
+    for pos in positions:
+        for i in range(len(homs)):
+            s_id = homs[i]['source']['id']
+            t_id = homs[i]['target']['id']
+            s_protein = homs[i]['source']['protein_id']
+            t_protein = homs[i]['target']['protein_id']
+            s_seq = homs[i]['source']['align_seq']
+            t_seq = homs[i]['target']['align_seq']
+            p = get_align_pos(s_seq, pos)
+            if (s_protein, pos) not in uniprot_lookups:
+                ufeats = get_uniprot_features(s_protein, pos, pos)
+                if ufeats:
+                    for f in ufeats:
+                        result = dict(query_gene=s_id,
+                                      query_protein=s_protein,
+                                      query_pos=pos,
+                                      query_aa=s_seq[p],
+                                      homolog_gene=s_id,
+                                      homolog_protein=s_protein,
+                                      orthology_type="self",
+                                      species=homs[i]['source']['species'],
+                                      percent_id=100,
+                                      percent_pos=100,
+                                      homolog_pos=pos,
+                                      homolog_aa=s_seq[p],
+                                      features=f)
+                        results.append(result)
+                uniprot_lookups.add((s_protein, pos))
+            if protein_id is not None and s_protein != protein_id:
+                logger.info("Skipping paralog lookup for protein {}\n".format(
+                    protein_id))
+                return results, paralogs
+            hom_type = homs[i]['type']
+            if skip_paralogs and 'paralog' in hom_type:
+                continue
+            o, aa = align_pos_to_amino_acid(t_seq, p) if p > 0 else (-1, '-')
+            if 'paralog' in hom_type and o > 0:
+                paralogs[t_id].append(ParalogLookup(t_id, t_protein, o))
+            if o > 0 and (t_protein, o) not in uniprot_lookups:
+                result_template = dict(
+                                    query_gene=s_id,
+                                    query_protein=s_protein,
+                                    query_pos=pos,
+                                    query_aa=s_seq[p],
+                                    homolog_gene=t_id,
+                                    homolog_protein=t_protein,
+                                    orthology_type="self",
+                                    species=homs[i]['target']['species'],
+                                    percent_id=homs[i]['target']['perc_id'],
+                                    percent_pos=homs[i]['target']['perc_pos'],
+                                    homolog_pos=o,
+                                    query_seq=s_seq,
+                                    homolog_seq=t_seq,
+                                    query_species=homs[i]['source']['species'],
+                                    homolog_aa=aa)
+                ufeats = get_uniprot_features(t_protein, o, o)
+                if ufeats:
+                    for f in ufeats:
+                        result = result_template.copy()
+                        result['features'] = f
+                        results.append(result)
+                elif output_all_orthologs:
                     result = result_template.copy()
-                    result['features'] = f
+                    result['features'] = dict((x, '-') for x in feat_fields)
                     results.append(result)
-            elif output_all_orthologs:
-                result = result_template.copy()
-                result['features'] = dict((x, '-') for x in feat_fields)
-                results.append(result)
-            uniprot_lookups.add((t_protein, o))
+                uniprot_lookups.add((t_protein, o))
     if not skip_paralogs:
         logger.info("Got {} paralog sequences".format(len(paralogs)))
     return results, paralogs
@@ -248,8 +277,8 @@ def get_options():
                         help='''Gene/protein ID to search with. Accession types
                         will be inferred from input and the corresponding
                         Ensembl gene ID will be identified.''')
-    parser.add_argument("-p", "--pos", required=True, type=int,
-                        help='''Position in protein to search. This must be
+    parser.add_argument("-p", "--pos", required=True, type=int, nargs='+',
+                        help='''Position(s) in protein to search. This must be
                         relative to the canonical Ensembl transcript as used by
                         Ensembl's Compara database.''')
     parser.add_argument("--paralog_lookups", action='store_true',
