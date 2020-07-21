@@ -3,6 +3,7 @@ import sys
 import logging
 import argparse
 from collections import namedtuple, defaultdict
+from Bio.SubsMat.MatrixInfo import pam250
 from ora.ensembl_rest_queries import EnsemblRestQueries
 from ora.id_parser import parse_id
 from ora.uniprot_lookups import get_uniprot_features
@@ -151,6 +152,20 @@ def seq_and_pos_from_results(results):
             pairs[k][p] = sorted(pairs[k][p])
     return pairs
 
+def get_conservation_symbol(aa1, aa2):
+    if aa1 == aa2:
+        return '*' if aa1 != '-' else ' '
+    s = pam250.get((aa1, aa2), pam250.get((aa2, aa1), -99))
+    if s > 0.5:
+        return ':'
+    if s >= 0.0:
+        return '.'
+    return ' '
+
+
+def conservation_status(seq1, seq2):
+    return ''.join(get_conservation_symbol(x, y) for x, y in zip(seq1, seq2))
+
 
 def write_alignments(results, fh, gene2symbol, linelen=60):
     for query_hom, res in seq_and_pos_from_results(results).items():
@@ -166,18 +181,25 @@ def write_alignments(results, fh, gene2symbol, linelen=60):
         fh.write('-' * len(header) + "\n")
         qlen = len(res['query_seq'])
         for i in range(0, qlen, linelen):
+            # query sequence
             fh.write("{:>{fill}}: {}\n".format(res['query_protein'],
                                                res['query_seq'][i:i+linelen],
                                                fill=lmargin))
+            # homolog sequence
             fh.write("{:>{fill}}: {}\n".format(res['homolog_protein'],
                                                res['homolog_seq'][i:i+linelen],
                                                fill=lmargin))
+            # conservation status
+            fh.write("{:>{fill}}  ".format(' ', fill=lmargin))
+            fh.write(conservation_status(res['query_seq'][i:i+linelen],
+                                         res['homolog_seq'][i:i+linelen])
+                     + "\n")
             for align_pos in res['align_positions']:
                 if i <= align_pos < i + linelen:  # pos on current line
                     l_pos = align_pos - i
                     l_pad = lmargin + 2
                     r_pad = min(linelen, qlen - i) - l_pos - 1
-                    fh.write(' ' * l_pad + '=' * l_pos + '^' + '=' * r_pad +
+                    fh.write(' ' * l_pad + '_' * l_pos + '^' + '_' * r_pad +
                              '\n')
             fh.write("\n")
         fh.write("\n")
