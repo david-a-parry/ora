@@ -12,6 +12,7 @@ ParalogLookup = namedtuple("ParalogLookup", "gene protein position")
 feat_fields = ['UniprotID', 'Start', 'Stop', 'Feature', 'Description']
 ens_rest = EnsemblRestQueries()
 ensg2symbol = dict()
+uniprot_lookups = set()
 
 logger = logging.getLogger("ORA")
 logger.setLevel(logging.INFO)
@@ -132,7 +133,6 @@ def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False,
                         output_all_orthologs=False):
     paralogs = []
     results = []
-    uniprot_lookups = set()
     homs = data['data'][0]['homologies']
     logger.info("Got {:,} homologs".format(len(homs)))
     for i in range(len(homs)):
