@@ -194,13 +194,16 @@ def write_alignments(results, fh, gene2symbol, linelen=60):
             fh.write(conservation_status(res['query_seq'][i:i+linelen],
                                          res['homolog_seq'][i:i+linelen])
                      + "\n")
-            for align_pos in res['align_positions']:
-                if i <= align_pos < i + linelen:  # pos on current line
-                    l_pos = align_pos - i
+            pos_overlaps = [x for x in res['align_positions']
+                            if i <= x < i + linelen]
+            if pos_overlaps:
                     l_pad = lmargin + 2
-                    r_pad = min(linelen, qlen - i) - l_pos - 1
-                    fh.write(' ' * l_pad + '_' * l_pos + '^' + '_' * r_pad +
-                             '\n')
+                    r_pad = min(linelen, qlen - i)
+                    c = ' ' * l_pad + '_' * r_pad
+                    for align_pos in pos_overlaps:
+                        j = align_pos - i + l_pad
+                        c = c[:j] + '^' + c[j+1:]
+                    fh.write('{}\n'.format(c))
             fh.write("\n")
         fh.write("\n")
 
