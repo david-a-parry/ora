@@ -70,7 +70,8 @@ def get_gene_details(x, species='human'):
 
 
 def main(gene, pos, paralog_lookups=False, timeout=10.0, max_retries=2,
-         all_homologs=False, quiet=False, debug=False, silent=False):
+         all_homologs=False, output_alignments=None, quiet=False, debug=False,
+         silent=False):
     if silent:
         logger.setLevel(logging.ERROR)
     elif quiet:
@@ -85,10 +86,12 @@ def main(gene, pos, paralog_lookups=False, timeout=10.0, max_retries=2,
     data = ens_rest.get_homologies(ensg)
     if data is None:
         sys.exit("ERROR: Could not find ensembl gene '{}'".format(ensg))
+    if output_alignments:
+        alignment_fh = open(output_alignments, 'wt')
     header_fields = '''Query_Symbol Query_Gene Query_Protein Query_Pos 
                        Query_AA Homolog_Symbol Homolog_Gene Homolog_Protein
-                       Orthology_Type Species Percent_ID Homolog_Pos
-                       Homolog_AA'''.split()
+                       Orthology_Type Species Percent_ID Percent_Pos
+                       Homolog_Pos Homolog_AA'''.split()
     print("\t".join(header_fields + feat_fields))
     results, paralogs = parse_homology_data(data,
                                             pos,
@@ -115,12 +118,42 @@ def main(gene, pos, paralog_lookups=False, timeout=10.0, max_retries=2,
     symbol_lookups = set(x['homolog_gene'] for x in results)
     symbol_lookups.update(x['query_gene'] for x in results)
     ensg2symbol = lookup_symbols(symbol_lookups)
+    if output_alignments:
+        write_alignments(results, alignment_fh, ensg2symbol)
+        alignment_fh.close()
     for res in results:
         res['query_symbol'] = ensg2symbol.get(res['query_gene'], '-')
         res['homolog_symbol'] = ensg2symbol.get(res['homolog_gene'], '-')
         line = [str(res[x.lower()]) for x in header_fields] + \
                [str(res['features'][x]) for x in feat_fields]
         print("\t".join(line))
+
+
+def write_alignments(results, fh, gene2symbol, linelen=60):
+    for res in (x for x in results if 'query_seq' in x):
+        qsymbol = gene2symbol.get(res['query_gene'], '?')
+        hsymbol = gene2symbol.get(res['homolog_gene'], '?')
+        header = "|{} vs {} ({} {} vs {} {})|".format(res['query_protein'],
+                                                  res['homolog_protein'],
+                                                  qsymbol,
+                                                  res['query_species'],
+                                                  hsymbol,
+                                                  res['species'])
+        
+        lmargin = max(len(res['query_protein']), len(res['homolog_protein']))
+        fh.write('-' * len(header) + "\n")
+        fh.write(header + "\n")
+        fh.write('-' * len(header) + "\n")
+        for i in range(0, len(res['query_seq']), linelen):
+            fh.write("{:>{fill}}: {}\n".format(
+                res['query_protein'],
+                res['query_seq'][i:i+linelen],
+                fill=lmargin))
+            fh.write("{:>{fill}}: {}\n\n".format(
+                res['homolog_protein'],
+                res['homolog_seq'][i:i+linelen],
+                fill=lmargin))
+        fh.write("\n")
 
 
 def lookup_symbols(ensgs):
@@ -160,6 +193,7 @@ def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False,
                                   orthology_type="self",
                                   species=homs[i]['source']['species'],
                                   percent_id=100,
+                                  percent_pos=100,
                                   homolog_pos=pos,
                                   homolog_aa=s_seq[p],
                                   features=f)
@@ -185,7 +219,11 @@ def parse_homology_data(data, pos, protein_id=None, skip_paralogs=False,
                                    orthology_type="self",
                                    species=homs[i]['target']['species'],
                                    percent_id=homs[i]['target']['perc_id'],
+                                   percent_pos=homs[i]['target']['perc_pos'],
                                    homolog_pos=o,
+                                   query_seq=s_seq,
+                                   homolog_seq=t_seq,
+                                   query_species=homs[i]['source']['species'],
                                    homolog_aa=aa)
             ufeats = get_uniprot_features(t_protein, o, o)
             if ufeats:
@@ -220,6 +258,8 @@ def get_options():
     parser.add_argument("--all_homologs", action='store_true',
                         help='''Output alignment information for all homologs
                         even if no features are found.''')
+    parser.add_argument("--output_alignments", help='''Output alignments of
+                        with hits to this file.''')
     parser.add_argument("--timeout", type=int, default=10,
                         help='''Lookup timeout (in seconds) for Ensembl REST
                         queries. Default=10''')
