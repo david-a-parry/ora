@@ -85,9 +85,9 @@ def check_paralog_lookups(original_ensg, output_results, results):
                      output_results if r['query_gene'] != original_ensg)
     extra = list()
     for pair in para_comps:
-        if pair not in pair_comps:
-            extra.extend(r for r in results if r['query_gene'] == ensg and
-                         r['homolog_gene'] == pair[0])
+        if (original_ensg, pair[0]) not in pair_comps:
+            extra.extend(r for r in results if r['query_gene'] == original_ensg
+                         and r['homolog_gene'] == pair[0])
     return extra
 
 
@@ -107,6 +107,7 @@ def seq_and_pos_from_results(results):
         for p in ('align_positions', 'query_positions'):
             pairs[k][p] = sorted(pairs[k][p])
     return pairs
+
 
 def get_conservation_symbol(aa1, aa2):
     if aa1 == aa2:
