@@ -41,21 +41,27 @@ class EnsemblRestQueries(object):
             self.req_count = 0
         self.logger.debug("Retrieving {}".format(self.server+endpoint))
         headers = {"Content-Type": "application/json"}
-        if data:
-            headers['Accept'] = "application/json"
-            r = requests.post(self.server+endpoint, timeout=self.post_timeout,
-                             headers=headers, data=data)
-        else:
-            r = requests.get(self.server+endpoint, timeout=self.timeout,
-                             headers=headers)
-        self.req_count += 1
-        if not r.ok:
+        exception = None
+        try:
+            if data:
+                headers['Accept'] = "application/json"
+                r = requests.post(self.server+endpoint, timeout=self.post_timeout,
+                                headers=headers, data=data)
+            else:
+                r = requests.get(self.server+endpoint, timeout=self.timeout,
+                                headers=headers)
+            self.req_count += 1
+        except Exception as e:
+            exception = e
+        if exception or not r.ok:
             if attempt < self.max_retries:
                 attempt += 1
                 self.logger.info("Retry {}/{}".format(attempt,
                                                       self.max_retries)
                                  + " for {}".format(self.server+endpoint))
                 return self.get_endpoint(endpoint, attempt=attempt)
+            if exception:
+                raise exception
             r.raise_for_status()
         return r.json()
 
