@@ -69,70 +69,26 @@ def get_gene_details(x, species='human'):
     sys.exit("FAILED: Could not retrieve Ensembl gene ID for input '{}'"
              .format(x))
 
-
-def main(gene, pos, paralog_lookups=False, timeout=10.0, max_retries=2,
-         all_homologs=False, output_alignments=None, quiet=False, debug=False,
-         silent=False):
-    if silent:
-        logger.setLevel(logging.ERROR)
-    elif quiet:
-        logger.setLevel(logging.WARN)
-    elif debug:
-        logger.setLevel(logging.DEBUG)
-    ens_rest.logger.setLevel(logger.level)
-    unipro_logger.setLevel(logger.level)
-    ensg = get_gene_details(gene)
-    if ensg != gene:
-        logger.info("Got Ensembl Gene ID '{}'".format(ensg))
-    data = ens_rest.get_homologies(ensg)
-    if data is None:
-        sys.exit("ERROR: Could not find ensembl gene '{}'".format(ensg))
-    if output_alignments:
-        alignment_fh = open(output_alignments, 'wt')
-    header_fields = '''Query_Symbol Query_Gene Query_Protein Query_Pos 
-                       Query_AA Homolog_Symbol Homolog_Gene Homolog_Protein
-                       Orthology_Type Species Percent_ID Percent_Pos
-                       Homolog_Pos Homolog_AA'''.split()
-    print("\t".join(header_fields + feat_fields))
-    results, paralogs = parse_homology_data(data,
-                                            pos,
-                                            output_all_orthologs=all_homologs)
-    if paralog_lookups:
-        n_paralogs = len(paralogs.keys())
-        i = 0
-        for gene_id, paralog_list in paralogs.items():
-            i += 1
-            logger.info("Parsing paralog {:,} of {:,}".format(i, n_paralogs))
-            try:
-                pdata = ens_rest.get_homologies(gene_id)
-            except Exception as e:
-                logger.warning("Error looking up paralog {}: {}".format(
-                    gene_id, e))
-                continue
-            pro2pos = defaultdict(list)
-            for para in paralog_list:
-                pro2pos[para.protein].append(para.position)
-            for protein, positions in pro2pos.items():
-                p_results, _ = parse_homology_data(pdata,
-                                                   positions,
-                                                   protein_id=protein,
-                                                   skip_paralogs=True)
-                results.extend(p_results)
-    if not results:
-        logger.info("No results for {} position {}".format(gene, pos))
-        sys.exit()
-    symbol_lookups = set(x['homolog_gene'] for x in results)
-    symbol_lookups.update(x['query_gene'] for x in results)
-    ensg2symbol = lookup_symbols(symbol_lookups)
-    if output_alignments:
-        write_alignments(results, alignment_fh, ensg2symbol)
-        alignment_fh.close()
-    for res in results:
-        res['query_symbol'] = ensg2symbol.get(res['query_gene'], '-')
-        res['homolog_symbol'] = ensg2symbol.get(res['homolog_gene'], '-')
-        line = [str(res[x.lower()]) for x in header_fields] + \
-               [str(res['features'][x]) for x in feat_fields]
-        print("\t".join(line))
+def check_paralog_lookups(original_ensg, output_results, results):
+    '''
+        If we have results with a paralog of our original query gene as
+        the query gene we should output an alignment of our original
+        query gene and the paralog if we aren't already doing so. This
+        returns results for our original query gene and these paralogs
+        if not already in our output_results.
+    '''
+    # All pairwise comparisons in our output list
+    pair_comps = set((r['query_gene'], r['homolog_gene']) for r in
+                     output_results)
+    # Pairwise comparisons where the query gene is paralogous to our query
+    para_comps = set((r['query_gene'], r['homolog_gene']) for r in
+                     output_results if r['query_gene'] != original_ensg)
+    extra = list()
+    for pair in para_comps:
+        if pair not in pair_comps:
+            extra.extend(r for r in results if r['query_gene'] == ensg and
+                         r['homolog_gene'] == pair[0])
+    return extra
 
 
 def seq_and_pos_from_results(results):
@@ -237,19 +193,22 @@ def parse_homology_data(data, positions, protein_id=None, skip_paralogs=False,
                 ufeats = get_uniprot_features(s_protein, pos, pos)
                 if ufeats:
                     for f in ufeats:
-                        result = dict(query_gene=s_id,
-                                      query_protein=s_protein,
-                                      query_pos=pos,
-                                      query_aa=s_seq[p],
-                                      homolog_gene=s_id,
-                                      homolog_protein=s_protein,
-                                      orthology_type="self",
-                                      species=homs[i]['source']['species'],
-                                      percent_id=100,
-                                      percent_pos=100,
-                                      homolog_pos=pos,
-                                      homolog_aa=s_seq[p],
-                                      features=f)
+                        result = dict(
+                            query_gene=s_id,
+                            query_protein=s_protein,
+                            query_pos=pos,
+                            query_aa=s_seq[p],
+                            homolog_gene=s_id,
+                            homolog_protein=s_protein,
+                            orthology_type="self",
+                            species=homs[i]['source']['species'],
+                            percent_id=100,
+                            percent_pos=100,
+                            homolog_pos=pos,
+                            homolog_aa=s_seq[p],
+                            query_species=homs[i]['source']['species'],
+                            features=f,
+                            should_output=True)
                         results.append(result)
                 uniprot_lookups.add((s_protein, pos))
             if protein_id is not None and s_protein != protein_id:
@@ -278,16 +237,19 @@ def parse_homology_data(data, positions, protein_id=None, skip_paralogs=False,
                                     query_seq=s_seq,
                                     homolog_seq=t_seq,
                                     query_species=homs[i]['source']['species'],
-                                    homolog_aa=aa)
+                                    homolog_aa=aa,
+                                    should_output=False)
                 ufeats = get_uniprot_features(t_protein, o, o)
                 if ufeats:
                     for f in ufeats:
                         result = result_template.copy()
                         result['features'] = f
+                        result['should_output'] = True
                         results.append(result)
-                elif output_all_orthologs:
+                else: 
                     result = result_template.copy()
                     result['features'] = dict((x, '-') for x in feat_fields)
+                    result['should_output'] = output_all_orthologs
                     results.append(result)
                 uniprot_lookups.add((t_protein, o))
     if not skip_paralogs:
@@ -327,6 +289,76 @@ def get_options():
     parser.add_argument("--silent", action='store_true',
                         help='Only output error logger messages.')
     return parser
+
+
+def main(gene, pos, paralog_lookups=False, timeout=10.0, max_retries=2,
+         all_homologs=False, output_alignments=None, quiet=False, debug=False,
+         silent=False):
+    if silent:
+        logger.setLevel(logging.ERROR)
+    elif quiet:
+        logger.setLevel(logging.WARN)
+    elif debug:
+        logger.setLevel(logging.DEBUG)
+    ens_rest.logger.setLevel(logger.level)
+    ens_rest.timeout = timeout
+    ens_rest.max_retries = max_retries
+    unipro_logger.setLevel(logger.level)
+    ensg = get_gene_details(gene)
+    if ensg != gene:
+        logger.info("Got Ensembl Gene ID '{}'".format(ensg))
+    data = ens_rest.get_homologies(ensg)
+    if data is None:
+        sys.exit("ERROR: Could not find ensembl gene '{}'".format(ensg))
+    if output_alignments:
+        alignment_fh = open(output_alignments, 'wt')
+    header_fields = '''Query_Symbol Query_Gene Query_Protein Query_Pos 
+                       Query_AA Homolog_Symbol Homolog_Gene Homolog_Protein
+                       Orthology_Type Species Percent_ID Percent_Pos
+                       Homolog_Pos Homolog_AA'''.split()
+    print("\t".join(header_fields + feat_fields))
+    results, paralogs = parse_homology_data(data,
+                                            pos,
+                                            output_all_orthologs=all_homologs)
+    if paralog_lookups:
+        n_paralogs = len(paralogs.keys())
+        i = 0
+        for gene_id, paralog_list in paralogs.items():
+            i += 1
+            logger.info("Parsing paralog {:,} of {:,}".format(i, n_paralogs))
+            try:
+                pdata = ens_rest.get_homologies(gene_id)
+            except Exception as e:
+                logger.warning("Error looking up paralog {}: {}".format(
+                    gene_id, e))
+                continue
+            pro2pos = defaultdict(list)
+            for para in paralog_list:
+                pro2pos[para.protein].append(para.position)
+            for protein, positions in pro2pos.items():
+                p_results, _ = parse_homology_data(pdata,
+                                                   positions,
+                                                   protein_id=protein,
+                                                   skip_paralogs=True)
+                results.extend(p_results)
+    output_results = [r for r in results if r['should_output']]
+    if not output_results:
+        logger.info("No results for {} position {}".format(gene, pos))
+        sys.exit()
+    symbol_lookups = set(x['homolog_gene'] for x in output_results)
+    symbol_lookups.update(x['query_gene'] for x in output_results)
+    ensg2symbol = lookup_symbols(symbol_lookups)
+    if output_alignments:
+        extra_alignments = check_paralog_lookups(ensg, output_results, results)
+        write_alignments(output_results + extra_alignments, alignment_fh,
+                         ensg2symbol)
+        alignment_fh.close()
+    for res in output_results:
+        res['query_symbol'] = ensg2symbol.get(res['query_gene'], '-')
+        res['homolog_symbol'] = ensg2symbol.get(res['homolog_gene'], '-')
+        line = [str(res[x.lower()]) for x in header_fields] + \
+               [str(res['features'][x]) for x in feat_fields]
+        print("\t".join(line))
 
 
 if __name__ == '__main__':
