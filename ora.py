@@ -62,12 +62,13 @@ def get_gene_details(x, species='human'):
         if data:
             if len(data) > 1:
                 logger.warning("Multiple genes identified for input '{}'"
-                            .format(x))
+                               .format(x))
                 logger.warning("Using ID from first of multiple lookups ({})"
-                            .format(data[0]['id']))
+                               .format(data[0]['id']))
             return data[0]['id']
     sys.exit("FAILED: Could not retrieve Ensembl gene ID for input '{}'"
              .format(x))
+
 
 def check_paralog_lookups(original_ensg, output_results, results):
     '''
@@ -154,13 +155,13 @@ def write_alignments(results, fh, gene2symbol, linelen=60):
             pos_overlaps = [x for x in res['align_positions']
                             if i <= x < i + linelen]
             if pos_overlaps:
-                    l_pad = lmargin + 2
-                    r_pad = min(linelen, qlen - i)
-                    c = ' ' * l_pad + '_' * r_pad
-                    for align_pos in pos_overlaps:
-                        j = align_pos - i + l_pad
-                        c = c[:j] + '^' + c[j+1:]
-                    fh.write('{}\n'.format(c))
+                l_pad = lmargin + 2
+                r_pad = min(linelen, qlen - i)
+                c = ' ' * l_pad + '_' * r_pad
+                for align_pos in pos_overlaps:
+                    j = align_pos - i + l_pad
+                    c = c[:j] + '^' + c[j+1:]
+                fh.write('{}\n'.format(c))
             fh.write("\n")
         fh.write("\n")
 
@@ -247,7 +248,7 @@ def parse_homology_data(data, positions, protein_id=None, skip_paralogs=False,
                         result['features'] = f
                         result['should_output'] = True
                         results.append(result)
-                else: 
+                else:
                     result = result_template.copy()
                     result['features'] = dict((x, '-') for x in feat_fields)
                     result['should_output'] = output_all_orthologs
@@ -313,7 +314,7 @@ def main(gene, pos, paralog_lookups=False, timeout=10.0, max_retries=2,
         sys.exit("ERROR: Could not find ensembl gene '{}'".format(ensg))
     if output_alignments:
         alignment_fh = open(output_alignments, 'wt')
-    header_fields = '''Query_Symbol Query_Gene Query_Protein Query_Pos 
+    header_fields = '''Query_Symbol Query_Gene Query_Protein Query_Pos
                        Query_AA Homolog_Symbol Homolog_Gene Homolog_Protein
                        Orthology_Type Species Percent_ID Percent_Pos
                        Homolog_Pos Homolog_AA'''.split()
