@@ -51,6 +51,8 @@ def feats_from_ensp(ensp):
         return None
     if u_info['displayed']:
         return uniprot2feats[u_info['id']]
+    # TODO - calculate position relative to non-displayed isoform and adjust
+    # positions accordingly
     logger.warn("Found non-displayed Uniprot isoform {} for {} ".format(
         u_info['isoform'],
         ensp) + " - can not retrieve features for this isoform.")
