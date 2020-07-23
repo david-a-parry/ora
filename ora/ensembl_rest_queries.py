@@ -45,11 +45,13 @@ class EnsemblRestQueries(object):
         try:
             if data:
                 headers['Accept'] = "application/json"
-                r = requests.post(self.server+endpoint, timeout=self.post_timeout,
-                                headers=headers, data=data)
+                r = requests.post(self.server+endpoint,
+                                  timeout=self.post_timeout,
+                                  headers=headers,
+                                  data=data)
             else:
                 r = requests.get(self.server+endpoint, timeout=self.timeout,
-                                headers=headers)
+                                 headers=headers)
             self.req_count += 1
         except Exception as e:
             exception = e
