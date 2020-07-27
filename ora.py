@@ -318,6 +318,9 @@ def get_options():
                         even if no features are found.''')
     parser.add_argument("--output_alignments", help='''Output alignments of
                         with hits to this file.''')
+    parser.add_argument("--line_length", type=int, default=60,
+                        help='''Length of sequence lines in alignment output.
+                        Default=60.''')
     parser.add_argument("--timeout", type=int, default=10,
                         help='''Lookup timeout (in seconds) for Ensembl REST
                         queries. Default=10''')
@@ -333,9 +336,9 @@ def get_options():
     return parser
 
 
-def main(gene, pos, paralog_lookups=False, timeout=10.0, max_retries=2,
-         all_homologs=False, output_alignments=None, quiet=False, debug=False,
-         silent=False):
+def main(gene, pos, paralog_lookups=False, line_length=60, timeout=10.0,
+         max_retries=2, all_homologs=False, output_alignments=None,
+         quiet=False, debug=False, silent=False):
     if silent:
         logger.setLevel(logging.ERROR)
     elif quiet:
@@ -393,7 +396,8 @@ def main(gene, pos, paralog_lookups=False, timeout=10.0, max_retries=2,
     if output_alignments:
         extra_alignments = check_paralog_lookups(ensg, output_results, results)
         write_alignments(output_results + extra_alignments, alignment_fh,
-                         ensg2symbol)
+                         ensg2symbol,
+                         linelen=line_length)
         alignment_fh.close()
     for res in output_results:
         res['query_symbol'] = ensg2symbol.get(res['query_gene'], '-')
