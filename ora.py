@@ -98,15 +98,14 @@ def seq_and_pos_from_results(results):
         align_pos = get_align_pos(res['query_seq'], res['query_pos'])
         k = (res['query_gene'], res['homolog_gene'])
         if k not in pairs:
-            pairs[k] = dict(align_positions=set(), query_positions=set())
+            pairs[k] = dict(align_positions=list(), query_positions=list(),
+                            query_aas=list())
             for x in ('query_species', 'species', 'query_protein', 'query_seq',
                       'homolog_protein', 'homolog_seq'):
                 pairs[k][x] = res[x]
-        pairs[k]['align_positions'].add(align_pos)
-        pairs[k]['query_positions'].add(res['query_pos'])
-    for k in pairs:
-        for p in ('align_positions', 'query_positions'):
-            pairs[k][p] = sorted(pairs[k][p])
+        pairs[k]['align_positions'].append(align_pos)
+        pairs[k]['query_positions'].append(res['query_pos'])
+        pairs[k]['query_aas'].append(res['query_aa'])
     return pairs
 
 
@@ -125,6 +124,44 @@ def conservation_status(seq1, seq2):
     return ''.join(get_conservation_symbol(x, y) for x, y in zip(seq1, seq2))
 
 
+def arrange_labels(label_tups, line_length, l_margin):
+    '''labels is a list of tuples of labels and postitions on the line'''
+    label_tups = sorted(label_tups, key=lambda x: x[1])
+    labels, positions = zip(*label_tups)
+    written = set()
+    label_lines = []
+    tag_pos = []  # position of | chars tagging label to seq
+    for i in range(len(labels)):
+        if labels[i] in written:
+            continue
+        new_tag_pos = []
+        s = ' ' * (line_length + l_margin)
+        span_i = positions[i] + len(labels[i]) - 1
+        s = s[:positions[i]] + labels[i] + s[span_i:]
+        new_tag_pos.append(positions[i])
+        written.add(labels[i])
+        for j in range(len(labels)):
+            if labels[j] in written:
+                continue
+            if positions[i] <= positions[j] < span_i:
+                continue
+            span_j = positions[j] + len(labels[j]) - 1
+            s = s[:positions[j]] + labels[j] + s[span_j:]
+            written.add(labels[j])
+            new_tag_pos.append(positions[j])
+        for t in tag_pos:
+            # we add | tags AFTER adding labels because each added label would
+            # shift the position of the | tag if we added tags first
+            s = s[:t] + '|' + s[t+1:]
+        tag_pos.extend(new_tag_pos)
+        label_lines.append(s.rstrip())
+    s = ' ' * l_margin + '_' * line_length
+    for t in tag_pos:
+        s = s[:t] + '|' + s[t+1:]
+    label_lines.append(s)
+    return label_lines
+
+
 def write_alignments(results, fh, gene2symbol, linelen=60):
     for query_hom, res in seq_and_pos_from_results(results).items():
         query_gene, hom_gene = query_hom
@@ -132,13 +169,28 @@ def write_alignments(results, fh, gene2symbol, linelen=60):
         hsymbol = gene2symbol.get(hom_gene, '?')
         header = "|{} {} vs {} {} position ".format(
             qsymbol, res['query_species'], hsymbol, res['species']) + \
-            ",".join(str(x) for x in res['query_positions']) + "|"
+            ",".join(str(x) for x in sorted(set(res['query_positions']))) + "|"
         lmargin = max(len(res['query_protein']), len(res['homolog_protein']))
         fh.write('-' * len(header) + "\n")
         fh.write(header + "\n")
         fh.write('-' * len(header) + "\n")
         qlen = len(res['query_seq'])
         for i in range(0, qlen, linelen):
+            # conservation status
+            pos_overlaps = [(x, y, z) for x, y, z in
+                            zip(res['align_positions'],
+                                res['query_positions'],
+                                res['query_aas']) if i <= x < i + linelen]
+            if pos_overlaps:
+                l_pad = lmargin + 2
+                labels = set()
+                for align_pos, qpos, qaa in pos_overlaps:
+                    j = align_pos - i + l_pad
+                    labels.add(("{}{}".format(qaa, qpos), j))
+                label_text = arrange_labels(labels, linelen, l_pad)
+                fh.write('\n'.join(label_text) + '\n')
+            else:
+                fh.write("\n")
             # query sequence
             fh.write("{:>{fill}}: {}\n".format(res['query_protein'],
                                                res['query_seq'][i:i+linelen],
@@ -147,22 +199,10 @@ def write_alignments(results, fh, gene2symbol, linelen=60):
             fh.write("{:>{fill}}: {}\n".format(res['homolog_protein'],
                                                res['homolog_seq'][i:i+linelen],
                                                fill=lmargin))
-            # conservation status
             fh.write("{:>{fill}}  ".format(' ', fill=lmargin))
             fh.write(conservation_status(res['query_seq'][i:i+linelen],
                                          res['homolog_seq'][i:i+linelen])
                      + "\n")
-            pos_overlaps = [x for x in res['align_positions']
-                            if i <= x < i + linelen]
-            if pos_overlaps:
-                l_pad = lmargin + 2
-                r_pad = min(linelen, qlen - i)
-                c = ' ' * l_pad + '_' * r_pad
-                for align_pos in pos_overlaps:
-                    j = align_pos - i + l_pad
-                    c = c[:j] + '^' + c[j+1:]
-                fh.write('{}\n'.format(c))
-            fh.write("\n")
         fh.write("\n")
 
 
