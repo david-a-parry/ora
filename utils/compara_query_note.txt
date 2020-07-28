@@ -1,23 +1,15 @@
 #given Ensembl GENE ID obtain homologies and sequences for protein
-SELECT
-  j.*, homology.description, sequence.length, sequence.sequence
-FROM
-  gene_member g1
-INNER JOIN
-  homology_member h
-ON
-  g1.canonical_member_id = h.seq_member_id
-INNER JOIN
-  homology_member j
-ON
-  h.homology_id = j.homology_id
-INNER JOIN
-  sequence
-ON
-  j.seq_member_id = sequence.sequence_id
-INNER JOIN
-  homology
-ON
-  j.homology_id = homology.homology_id
-WHERE
-  g1.`stable_id` = "ENSG00000113368";
+ SELECT j.*,
+       homology.description,
+       SEQUENCE.length,
+       SEQUENCE.SEQUENCE
+FROM   gene_member g1
+       inner join homology_member h
+               ON g1.canonical_member_id = h.seq_member_id
+       inner join homology_member j
+               ON h.homology_id = j.homology_id
+       inner join SEQUENCE
+               ON j.seq_member_id = SEQUENCE.sequence_id
+       inner join homology
+               ON j.homology_id = homology.homology_id
+WHERE  g1 .` stable_id ` = "ENSG00000113368";
