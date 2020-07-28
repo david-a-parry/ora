@@ -17,12 +17,6 @@ uniprot_lookups = set()
 
 logger = logging.getLogger("ORA")
 logger.setLevel(logging.INFO)
-formatter = logging.Formatter(
-    '[%(asctime)s] %(name)s - %(levelname)s - %(message)s')
-ch = logging.StreamHandler()
-ch.setLevel(logger.level)
-ch.setFormatter(formatter)
-logger.addHandler(ch)
 
 
 def get_align_pos(seq, p):
@@ -345,10 +339,18 @@ def main(gene, pos, paralog_lookups=False, line_length=60, timeout=10.0,
         logger.setLevel(logging.WARN)
     elif debug:
         logger.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        '[%(asctime)s] %(name)s - %(levelname)s - %(message)s')
+    ch = logging.StreamHandler()
+    ch.setLevel(logger.level)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    unipro_logger.setLevel(logger.level)
     ens_rest.logger.setLevel(logger.level)
+    for handler in ens_rest.logger.handlers + unipro_logger.handlers:
+        handler.setLevel(logger.level)
     ens_rest.timeout = timeout
     ens_rest.max_retries = max_retries
-    unipro_logger.setLevel(logger.level)
     ensg = get_gene_details(gene)
     if ensg != gene:
         logger.info("Got Ensembl Gene ID '{}'".format(ensg))
