@@ -60,8 +60,6 @@ def feats_from_ensp(ensp):
 
 
 def _features_from_uniprot():
-    feats = list()
-    found = False
     with gzip.open(_features_tab, 'rt') as tabfile:
         reader = csv.DictReader(tabfile, delimiter='\t')
         for f in ['UniprotID', 'Feature', 'Start', 'Stop', 'Description']:
