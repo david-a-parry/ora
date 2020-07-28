@@ -57,6 +57,7 @@ def get_gene_details(x, species='human'):
             if len(data) > 1:
                 logger.warning("Multiple genes identified for input '{}'"
                                .format(x))
+                logger.debug("Ids are: " + ", ".join(x['id'] for x in data))
                 logger.warning("Using ID from first of multiple lookups ({})"
                                .format(data[0]['id']))
             return data[0]['id']
