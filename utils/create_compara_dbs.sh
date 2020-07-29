@@ -17,6 +17,8 @@ fi
 if [ "$DLDIR" == "" ]
 then
     DLDIR=./
+else
+    mkdir -p $DLDIR
 fi
 
 ENSURL=ftp://ftp.ensembl.org/pub/release-100/mysql/ensembl_compara_100
