@@ -41,8 +41,8 @@ def get_uniprot_features(ensp, start, stop):
         logger.debug("Could not find Uniprot features for {}".format(ensp))
         return None
     pos_feats = []
-    for f in ufeats:
-        if int(f['Start']) < stop and int(f['Stop']) >= start:
+    for f in ufeats:  # feature coordinates are 0-based
+        if f['Start'] < stop and f['Stop'] >= start:
             pos_feats.append(f)
     return pos_feats
 
@@ -74,7 +74,15 @@ def _features_from_uniprot():
             if f not in reader.fieldnames:
                 raise ValueError("Invalid header for {}".format(_features_tab))
             for row in reader:
-                uniprot2feats[row['UniprotID']].append(row)
+                try:
+                    f = dict(UniprotID=row['UniprotID'],
+                             Feature=row['Feature'],
+                             Start=int(row['Start']),
+                             Stop=int(row['Stop']),
+                             Description=row['Description'])
+                    uniprot2feats[row['UniprotID']].append(f)
+                except ValueError:
+                    logger.debug("Skipping feature {}".format(row))
 
 
 def _uniprot_from_ensp():
