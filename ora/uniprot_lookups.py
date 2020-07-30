@@ -18,9 +18,11 @@ _sprot_prefix = os.path.join(os.path.dirname(__file__),
                              "sprot.")
 _ens_id_tab = _sprot_prefix + 'ens_ids.tab.gz'
 _features_tab = _sprot_prefix + 'features.tab.gz'
+_variants_tab = _sprot_prefix + 'seq_vars.tab.gz'
 _isoform_seq_tab = _sprot_prefix + 'isoform_seqs.tab.gz'
 
 ensp2uniprot = dict()
+variants = dict()
 uniprot2feats = defaultdict(list)
 feature_lookups = dict()
 
@@ -33,13 +35,14 @@ def get_uniprot_features(ensp, start, stop):
     if not ensp2uniprot:
         _features_from_uniprot()
         _uniprot_from_ensp()
+        _read_uniprot_variants()
     ufeats = feature_lookups.get(ensp, feats_from_ensp(ensp))
     if ufeats is None:
         logger.debug("Could not find Uniprot features for {}".format(ensp))
         return None
     pos_feats = []
     for f in ufeats:
-        if int(f['Start']) <= stop and int(f['Stop']) >= start:
+        if int(f['Start']) < stop and int(f['Stop']) >= start:
             pos_feats.append(f)
     return pos_feats
 
@@ -49,10 +52,15 @@ def feats_from_ensp(ensp):
     if u_info is None:
         logger.debug("Could not find Uniprot ID for {}".format(ensp))
         return None
-    if u_info['displayed']:
-        return uniprot2feats[u_info['id']]
+    feats = uniprot2feats[u_info['id']]
+    if u_info['displayed'] or feats is None:
+        feature_lookups[ensp] = feats
+        return feats
     # TODO - calculate position relative to non-displayed isoform and adjust
     # positions accordingly
+    for f in feats:
+        # coords are 0-based
+        pass
     logger.warn("Found non-displayed Uniprot isoform {} for {} ".format(
         u_info['isoform'],
         ensp) + " - can not retrieve features for this isoform.")
@@ -79,4 +87,17 @@ def _uniprot_from_ensp():
                 ensp2uniprot[row['Protein']] = dict(
                     id=row['UniprotID'],
                     isoform=row['Isoform'],
-                    displayed=bool(int(row['Displayed'])))
+                    displayed=bool(int(row['Displayed'])),
+                    variants=row['Variants'].split(','))
+
+
+def _read_uniprot_variants():
+    with gzip.open(_variants_tab, 'rt') as tabfile:
+        reader = csv.DictReader(tabfile, delimiter='\t')
+        for f in ['Variation', 'Start', 'Stop', 'Length']:
+            if f not in reader.fieldnames:
+                raise ValueError("Invalid header for {}".format(_variants_tab))
+            for row in reader:
+                variants[row['Variation']] = dict(start=int(row['start']),
+                                                  stop=int(row['stop']),
+                                                  length=int(row['Length']))

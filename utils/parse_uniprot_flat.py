@@ -76,7 +76,7 @@ def parse_record(record, featfile, varfile, ensfile, seqfile=None):
     for ft in (x for x in record.features if x.type in feature_outputs):
         featfile.write("\t".join((canonical,
                                   ft.type,
-                                  str(ft.location.start + 1),
+                                  str(ft.location.start),
                                   str(ft.location.end),
                                   ft.qualifiers['note'])) + "\n")
     for var_id, var in var_seqs.items():
