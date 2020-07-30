@@ -56,15 +56,33 @@ def feats_from_ensp(ensp):
     if u_info['displayed'] or feats is None:
         feature_lookups[ensp] = feats
         return feats
-    # TODO - calculate position relative to non-displayed isoform and adjust
-    # positions accordingly
+    # calculate position relative to non-displayed isoform and adjust feature 
+    logger.debug("Found non-displayed Uniprot isoform {} for {} ".format(
+        u_info['isoform'], ensp) + " - adjusting features for this isoform.")
+    adjustments = [variants[x] for x in ensp2uniprot[ensp]['variants']]
+    adjusted_feats = []
     for f in feats:
-        # coords are 0-based
-        pass
-    logger.warn("Found non-displayed Uniprot isoform {} for {} ".format(
-        u_info['isoform'],
-        ensp) + " - can not retrieve features for this isoform.")
-    return None
+        # all coords are 0-based
+        f_adj = sorted((x for x in adjustments if x['Start'] < f['Stop']),
+                       key=lambda x: (x['Start'], x['Stop']))
+        delta = 0
+        for adj in f_adj:
+            if adj['Start'] < f['Stop'] and adj['Stop'] > f['Start']:
+                # variant overlaps feature - feature may be altered or not
+                # present in this isoform
+                logger.debug("Isoform sequence variation overlaps feature " +
+                             "for isoform {}/{} and feature {} - skipping"
+                             .format(ensp, u_info['id'], f))
+                delta = None
+                break
+            span = adj['Stop'] - adj['Start']
+            delta += adj['Length'] - span
+        if delta is not None:
+            f['Start'] += delta
+            f['Stop'] += delta
+            adjusted_feats.append(f)
+    feature_lookups[ensp] = adjusted_feats
+    return adjusted_feats
 
 
 def _features_from_uniprot():
@@ -106,6 +124,6 @@ def _read_uniprot_variants():
             if f not in reader.fieldnames:
                 raise ValueError("Invalid header for {}".format(_variants_tab))
             for row in reader:
-                variants[row['Variation']] = dict(start=int(row['start']),
-                                                  stop=int(row['stop']),
-                                                  length=int(row['Length']))
+                variants[row['Variation']] = dict(Start=int(row['Start']),
+                                                  Stop=int(row['Stop']),
+                                                  Length=int(row['Length']))
