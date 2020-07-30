@@ -36,7 +36,7 @@ do
     commandfile=$(mktemp)
     # create temporary init script
     cat <<EOF > $commandfile
-.mode tab gene_member
+.mode tab
 .import /dev/stdin $TABLE
 EOF
     # import
