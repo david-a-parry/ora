@@ -83,6 +83,7 @@ def parse_record(record, featfile, varfile, ensfile, seqfile=None):
         varfile.write("\t".join((var_id,
                                  str(var['start']),
                                  str(var['stop']),
+                                 str(len(var['seq'])),
                                  var['seq'])) + "\n")
 
 
@@ -143,7 +144,7 @@ def main(data_file, output_prefix, progress_interval=10000, no_gzip=False,
                               Isoform Displayed Variants'''.split()) + "\n")
     feat_fh.write("\t".join('''UniprotID Feature Start Stop
                                Description'''.split()) + "\n")
-    var_fh.write("\t".join('Variation Start Stop Seq'.split()) + "\n")
+    var_fh.write("\t".join('Variation Start Stop Length Seq'.split()) + "\n")
     with open_func(data_file, 'rt') as filehandle:
         n = 0
         for record in SwissProt.parse(filehandle):
