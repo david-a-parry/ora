@@ -36,12 +36,14 @@ def get_uniprot_features(ensp, start, stop):
         _features_from_uniprot()
         _uniprot_from_ensp()
         _read_uniprot_variants()
-    ufeats = feature_lookups.get(ensp, feats_from_ensp(ensp))
+    ufeats = feature_lookups.get(ensp)
     if ufeats is None:
-        logger.debug("Could not find Uniprot features for {}".format(ensp))
+        ufeats = feats_from_ensp(ensp)
+    if ufeats is None:
+        # logger.debug("Could not find Uniprot features for {}".format(ensp))
         return None
     pos_feats = []
-    for f in ufeats:  # feature coordinates are 0-based
+    for f in ufeats:  # feature coordinates are 0-based, start/stop are 1-based
         if f['Start'] < stop and f['Stop'] >= start:
             pos_feats.append(f)
     return pos_feats
@@ -50,13 +52,13 @@ def get_uniprot_features(ensp, start, stop):
 def feats_from_ensp(ensp):
     u_info = ensp2uniprot.get(ensp)
     if u_info is None:
-        logger.debug("Could not find Uniprot ID for {}".format(ensp))
+        # logger.debug("Could not find Uniprot ID for {}".format(ensp))
         return None
     feats = uniprot2feats[u_info['id']]
     if u_info['displayed'] or feats is None:
         feature_lookups[ensp] = feats
         return feats
-    # calculate position relative to non-displayed isoform and adjust feature 
+    # calculate position relative to non-displayed isoform and adjust feature
     logger.debug("Found non-displayed Uniprot isoform {} for {} ".format(
         u_info['isoform'], ensp) + " - adjusting features for this isoform.")
     adjustments = [variants[x] for x in ensp2uniprot[ensp]['variants']]
