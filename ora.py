@@ -135,10 +135,10 @@ def arrange_labels(label_tups, line_length, l_margin):
         s = s[:positions[i]] + labels[i] + s[span_i:]
         new_tag_pos.append(positions[i])
         written.add(labels[i])
-        for j in range(len(labels)):
+        for j in range(i + 1, len(labels)):
             if labels[j] in written:
                 continue
-            if positions[i] <= positions[j] < span_i:
+            if positions[i] <= positions[j] <= span_i:
                 continue
             span_j = positions[j] + len(labels[j]) - 1
             s = s[:positions[j]] + labels[j] + s[span_j:]
