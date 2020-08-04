@@ -15,7 +15,7 @@ def main(dldir='.'):
     with gzip.open(os.path.join(dldir, "ora_homology_member.txt.gz"),
                    'rt') as infile:
         for line in infile:
-            seq_members.add(line.split()[2])
+            seq_members.add(line.rstrip().split("\t")[2])
             n += 1
             if n % 100000 == 0:
                 sys.stderr.write("Processed {:,} genes\n".format(n))
@@ -26,7 +26,7 @@ def main(dldir='.'):
     outfile = os.path.join(dldir, "ora_sequence.txt.gz")
     with gzip.open(seqfile, 'rt') as fh, gzip.open(outfile, 'wt') as out:
         for line in fh:
-            cols = line.split()
+            cols = line.rstrip().split("\t")
             if cols[0] in seq_members:
                 out.write("\t".join((cols[0], cols[1], cols[3])) + "\n")
                 p += 1

@@ -26,7 +26,7 @@ def main(dldir='.'):
     outfile = os.path.join(dldir, "ora_gene_member.txt.gz")
     with gzip.open(infile, 'rt') as fh, gzip.open(outfile, 'wt') as out:
         for line in fh:
-            cols = line.split()
+            cols = line.rstrip().split("\t")
             if cols[4] == '9606' or cols[0] in gene_members:
                 # `gene_member_id` integer NOT NULL PRIMARY KEY AUTOINCREMENT
                 # ,  `stable_id` varchar(128) NOT NULL
@@ -46,12 +46,8 @@ def main(dldir='.'):
                 # we keep cols `gene_member_id`, `stable_id`, `version`
                 #              `taxon_id`, `biotype_group`,
                 #              `canonical_member_id`, `display_label`
-                if len(cols) < 14:
-                    display_lbl = ''
-                else:
-                    display_lbl = cols[13]
                 out.write("\t".join(cols[:3] + [cols[4], cols[6], cols[7],
-                                                display_lbl]) + "\n")
+                                                cols[13]]) + "\n")
                 p += 1
             n += 1
             if n % 100000 == 0:

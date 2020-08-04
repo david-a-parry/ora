@@ -7,12 +7,12 @@ import gzip
 class HomologyRecord(object):
 
     def __init__(self, hom_line, member1, member2):
-        self.m1_cols = member1.split()
-        self.m2_cols = member2.split()
+        self.m1_cols = member1.rstrip().split("\t")
+        self.m2_cols = member2.rstrip().split("\t")
         self.homology_id = self.m1_cols[0]
         assert(self.homology_id == self.m2_cols[0])
         self.gene_members = (self.m1_cols[1], self.m2_cols[1])
-        h_cols = hom_line.split()
+        h_cols = hom_line.rstrip().split("\t")
         assert(self.homology_id == h_cols[0])
         self.hom_columns = [h_cols[2], h_cols[14]]
 
@@ -64,7 +64,7 @@ def main(dldir='.'):
     n = 0
     with gzip.open(os.path.join(dldir, "gene_member.txt.gz"), 'rt') as infile:
         for line in infile:
-            cols = line.split()
+            cols = line.rstrip().split("\t")
             if cols[4] == '9606':
                 gene_members.add(cols[0])
             n += 1
