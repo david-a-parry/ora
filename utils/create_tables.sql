@@ -22,7 +22,6 @@ CREATE TABLE `gene_member` (
     ,  `taxon_id` integer  NOT NULL
     ,  `biotype_group` text  NOT NULL DEFAULT 'coding'
     ,  `canonical_member_id` integer  DEFAULT NULL
-    ,  `description` text DEFAULT NULL
     ,  `display_label` varchar(128) DEFAULT NULL
     ,  UNIQUE (`stable_id`)
 );
