@@ -46,8 +46,12 @@ def main(dldir='.'):
                 # we keep cols `gene_member_id`, `stable_id`, `version`
                 #              `taxon_id`, `biotype_group`,
                 #              `canonical_member_id`, `display_label`
+                if len(cols) < 14:
+                    display_lbl = ''
+                else:
+                    display_lbl = cols[13]
                 out.write("\t".join(cols[:3] + [cols[4], cols[6], cols[7],
-                                                cols[13]]) + "\n")
+                                                display_lbl]) + "\n")
                 p += 1
             n += 1
             if n % 100000 == 0:
