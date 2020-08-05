@@ -22,21 +22,44 @@ def main(dldir='.'):
     sys.stderr.write("Got {:,} seq members\n".format(len(seq_members)))
     n = 0
     p = 0
-    seqfile = os.path.join(dldir, "sequence.txt.gz")
-    outfile = os.path.join(dldir, "ora_sequence.txt.gz")
-    with gzip.open(seqfile, 'rt') as fh, gzip.open(outfile, 'wt') as out:
+    seq_ids = set()
+    memberfile = os.path.join(dldir, "seq_member.txt.gz")
+    outfile = os.path.join(dldir, "ora_seq_member.txt.gz")
+    with gzip.open(memberfile, 'rt') as fh, gzip.open(outfile, 'wt') as out:
         for line in fh:
             cols = line.rstrip().split("\t")
             if cols[0] in seq_members:
-                out.write("\t".join((cols[0], cols[1], cols[3])) + "\n")
+                seq_ids.add(cols[6])
+                # | seq_member_id | stable_id | version | sequence_id |
+                out.write("\t".join((cols[0], cols[1], cols[2], cols[6],)) +
+                          "\n")
                 p += 1
             n += 1
             if n % 100000 == 0:
-                sys.stderr.write("Processed {:,} sequences. ".format(n) +
+                sys.stderr.write("Processed {:,} seq_members. ".format(n) +
                                  "Got {:,} homology seq_members.\n"
                                  .format(p))
-    sys.stderr.write("Finised. Processed {:,} sequences. ".format(n) +
-                     "Got {:,} homology sequences.\n".format(p))
+    sys.stderr.write("Finised. Processed {:,} seq_members. ".format(n) +
+                     "Got {:,} homology sequences members.\n".format(p))
+    seqfile = os.path.join(dldir, "sequence.txt.gz")
+    outfile = os.path.join(dldir, "ora_sequence.txt.gz")
+    n = 0
+    p = 0
+    with gzip.open(seqfile, 'rt') as fh, gzip.open(outfile, 'wt') as out:
+        for line in fh:
+            cols = line.rstrip().split("\t")
+            if cols[0] in seq_ids:
+                p += 1
+                out.write("\t".join((cols[0], cols[1], cols[3])) + "\n")
+            n += 1
+            if n % 100000 == 0:
+                sys.stderr.write("Processed {:,} sequences. ".format(n) +
+                                 "Got {:,} homology sequences.\n"
+                                 .format(p))
+
+    sys.stderr.write("Processed {:,} sequences. ".format(n) +
+                     "Got {:,} homology sequences.\n"
+                     .format(p))
 
 
 if __name__ == '__main__':

@@ -29,7 +29,7 @@ echo "$(date) Creating output database '$DB'"
 cat $DIR/create_tables.sql | sqlite3 $DB
 
 echo $(date) Retrieving tables
-for TABLE in sequence homology homology_member gene_member
+for TABLE in seq_member sequence homology homology_member gene_member
 do
     echo $(date) Getting $TABLE
     wget --directory-prefix=$DLDIR -c ${ENSURL}/${TABLE}.txt.gz
@@ -44,7 +44,7 @@ python3 $DIR/get_homology_gene_members.py "$DLDIR"
 echo $(date) Identifying homology-relevant sequences
 python3 $DIR/get_homology_sequences.py "$DLDIR"
 
-for TABLE in sequence homology_member gene_member
+for TABLE in seq_member sequence homology_member gene_member
 do
     # create temporary init script
     commandfile=$(mktemp)

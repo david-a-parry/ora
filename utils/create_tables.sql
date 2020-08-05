@@ -10,6 +10,14 @@ CREATE TABLE `homology_member` (
     ,  `is_high_confidence` integer DEFAULT NULL
     ,  PRIMARY KEY (`homology_id`,`gene_member_id`)
 );
+CREATE TABLE `seq_member` (
+      `seq_member_id` integer  NOT NULL PRIMARY KEY AUTOINCREMENT
+    , `stable_id` text NOT NULL
+    , `version` integer NOT NULL
+    , `sequence_id` integer  NOT NULL
+    ,  UNIQUE (`stable_id`)
+);
+
 CREATE TABLE `sequence` (
       `sequence_id` integer  NOT NULL PRIMARY KEY AUTOINCREMENT
     ,  `length` integer NOT NULL
@@ -29,3 +37,4 @@ CREATE TABLE `gene_member` (
 CREATE INDEX "idx_homology_member_gene_member_id" ON "homology_member" (`gene_member_id`);
 CREATE INDEX "idx_homology_member_seq_member_id" ON "homology_member" (`seq_member_id`);
 CREATE INDEX "idx_gene_member_canonical_member_id" ON "gene_member" (`canonical_member_id`);
+CREATE INDEX "idx_seq_member_stable_id" ON "seq_member" (`stable_id`);
