@@ -57,4 +57,8 @@ EOF
     gzip -d -c ${DLDIR}/ora_${TABLE}.txt.gz | sqlite3 --init $commandfile $DB
     rm $commandfile
 done
-echo $(date) Finished imports
+
+echo $(date) Finished imports - converting NULL fields
+cat $DIR/fix_nulls.sql | sqlite3 $DB
+
+echo $(date) Done
