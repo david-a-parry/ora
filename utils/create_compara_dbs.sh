@@ -25,6 +25,7 @@ ENSURL=ftp://ftp.ensembl.org/pub/release-100/mysql/ensembl_compara_100
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 set -euo pipefail
 
+echo $(date) Retrieving tables
 for TABLE in seq_member sequence homology homology_member gene_member ncbi_taxa_name
 do
     echo $(date) Getting $TABLE
@@ -43,8 +44,8 @@ python3 $DIR/get_homology_sequences.py "$DLDIR"
 echo "$(date) Creating output database '$DB'"
 cat $DIR/create_tables.sql | sqlite3 $DB
 
-echo $(date) Retrieving tables
-for TABLE in seq_member sequence homology_member gene_member ncbi_taxa_name
+echo $(date) Importing tables
+for TABLE in seq_member sequence homology_member gene_member
 do
     # create temporary init script
     commandfile=$(mktemp)
@@ -57,6 +58,18 @@ EOF
     gzip -d -c ${DLDIR}/ora_${TABLE}.txt.gz | sqlite3 --init $commandfile $DB
     rm $commandfile
 done
+
+commandfile=$(mktemp)
+cat <<EOF > $commandfile
+.mode tab
+.import /dev/stdin ncbi_taxa_name
+EOF
+
+echo $(date) Importing ncbi_taxa_name
+gzip -d -c ${DLDIR}/ncbi_taxa_name.txt.gz | \
+    grep -e "scientific name" -e "genbank common name" | \
+    sqlite3 --init $commandfile $DB
+rm $commandfile
 
 echo $(date) Finished imports - converting NULL fields
 cat $DIR/fix_nulls.sql | sqlite3 $DB
