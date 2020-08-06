@@ -25,7 +25,7 @@ ENSURL=ftp://ftp.ensembl.org/pub/release-100/mysql/ensembl_compara_100
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 set -euo pipefail
 
-for TABLE in seq_member sequence homology homology_member gene_member
+for TABLE in seq_member sequence homology homology_member gene_member ncbi_taxa_name
 do
     echo $(date) Getting $TABLE
     wget --directory-prefix=$DLDIR -c ${ENSURL}/${TABLE}.txt.gz
@@ -44,7 +44,7 @@ echo "$(date) Creating output database '$DB'"
 cat $DIR/create_tables.sql | sqlite3 $DB
 
 echo $(date) Retrieving tables
-for TABLE in seq_member sequence homology_member gene_member
+for TABLE in seq_member sequence homology_member gene_member ncbi_taxa_name
 do
     # create temporary init script
     commandfile=$(mktemp)

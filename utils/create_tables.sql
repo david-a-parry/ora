@@ -23,6 +23,7 @@ CREATE TABLE `sequence` (
     ,  `length` integer NOT NULL
     ,  `sequence` longtext NOT NULL
 );
+
 CREATE TABLE `gene_member` (
       `gene_member_id` integer  NOT NULL PRIMARY KEY AUTOINCREMENT
     ,  `stable_id` varchar(128) NOT NULL
@@ -31,8 +32,16 @@ CREATE TABLE `gene_member` (
     ,  `biotype_group` text  NOT NULL DEFAULT 'coding'
     ,  `canonical_member_id` integer  DEFAULT NULL
     ,  `display_label` varchar(128) DEFAULT NULL
+    ,  `taxon_name` varchar(255) NOT NULL
     ,  UNIQUE (`stable_id`)
 );
+
+CREATE TABLE `ncbi_taxa_name` (
+       `taxon_id` integer NOT NULL
+    ,  `name` varchar(255) NOT NULL
+    ,  `name_class` varchar(50) NOT NULL
+);
+
 
 CREATE INDEX "idx_homology_member_gene_member_id" ON "homology_member" (`gene_member_id`);
 CREATE INDEX "idx_homology_member_seq_member_id" ON "homology_member" (`seq_member_id`);
