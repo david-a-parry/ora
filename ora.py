@@ -2,6 +2,7 @@
 import sys
 import logging
 import argparse
+import sqlite3
 from collections import namedtuple, defaultdict
 from Bio.SubsMat.MatrixInfo import pam250
 from ora.ensembl_rest_queries import EnsemblRestQueries
@@ -11,6 +12,7 @@ from ora.uniprot_lookups import logger as unipro_logger
 
 ParalogLookup = namedtuple("ParalogLookup", "gene protein position")
 feat_fields = ['UniprotID', 'Start', 'Stop', 'Feature', 'Description']
+orth_types = ('ortholog_one2one', 'other_paralog', 'within_species_paralog')
 ens_rest = EnsemblRestQueries()
 ensg2symbol = dict()
 uniprot_lookups = set()
@@ -294,9 +296,77 @@ def parse_homology_data(data, positions, protein_id=None, skip_paralogs=False,
     return results, paralogs
 
 
+def ensp_and_seq_from_seq_member(seq_member_id, curr):
+    curr.execute('''SELECT stable_id, version, sequence_id from seq_member
+                    WHERE seq_member_id = ?''', (seq_member_id,))
+    result = curr.fetchone()
+    curr.execute('''SELECT sequence from sequence WHERE sequence_id = ?''',
+                  (result[2]))
+    seq_res = curr.fetchone()
+    return result[0], seq_res[0]
+
+
+def symbol_lookup(symbol, curr, taxon_id='9606'):
+    gene_fields = ['gene_member_id', 'stable_id', 'version', 'taxon_id',
+                   'biotype_group', 'canonical_member_id', 'display_label',
+                   'taxon_name']
+    curr.execute('''select * from gene_member WHERE g1.display_label = ? ANDy
+                    g1.taxon_id = ?''', (gene, taxon_id))
+    results = curr.fetchall()
+    if not results:
+        raise ValueError("No results found for symbol '{}' and taxon ID {}."
+                         .format(symbol, taxon_id))
+    if len(results != 1):
+        raise ValueError("Multiple results found for symbol " +
+                         "'{}' and taxon ID {}. ".format(symbol, taxon_id) +
+                         "Try a gene ID instead.")
+    d = dict((k, v) for k, v in zip(gene_fields, results[0]))
+    protein, seq = ensp_and_seq_from_seq_member(d['canonical_member_id'])
+    d['protein'] = protein
+    d['seq'] = seq
+    return d
+
+
 def local_lookups(gene, pos, db, paralog_lookups=False, line_length=60,
                   all_homologs=False, output_alignments=None):
-    raise NotImplementedError("Local lookups not yet implemented!")
+    conn = sqlite3.connect(db)
+    curr = conn.cursor()
+    lookup_result = symbol_lookup(gene)
+    homolog_fields = ['homology_id', 'gene_member_id', 'seq_member_id',
+                      'cigar_line', 'perc_cov', 'perc_id', 'perc_pos',
+                      'description', 'is_high_confidence']
+    homologies = []
+    curr.execute('''SELECT * from homology_member WHERE gene_member_id = ?''',
+                 (lookup_result['gene_member_id'],))
+    for row in curr:
+        rd = dict((k, v) for k, v in zip(homolog_fields, row))
+        if rd['description'] in orth_types:
+            homologies.append(rd)
+    sm_fields = ['seq_member_id', 'stable_id', 'version', 'sequence_id']
+    seq_members = []
+    for h in homologies:
+        curr.execute('select * from seq_member where seq_member_id = ?;',
+                     (str(h['seq_member_id']),))
+        for row in curr:
+            seq_members.append(dict((k, v) for k, v in zip(sm_fields, row)))
+    assert(len(seq_members) == len(homologies))
+    for i in range(len(seq_members)):
+        assert(seq_members[i]['seq_member_id'] ==
+                  homologies[i]['seq_member_id'])
+    sequences = []
+    seq_fields = ['sequence_id', 'length', 'sequence']
+    for sm in seq_members:
+        curr.execute('select * from sequence where sequence_id = ?;',
+                     (str(sm['sequence_id']),))
+        for row in curr:
+            sequences.append(dict((k, v) for k, v in zip(seq_fields, row)))
+    assert(len(sequences) == len(seq_members))
+    for i in range(len(sequences)):
+        assert(sequences[i]['sequence_id'] ==
+                  sequences[i]['sequence_id'])
+            
+#    if output_alignments:
+#        alignment_fh = open(output_alignments, 'wt')
 
 
 def remote_lookups(gene, pos, paralog_lookups=False, line_length=60,
