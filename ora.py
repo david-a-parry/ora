@@ -298,10 +298,10 @@ def parse_homology_data(data, positions, protein_id=None, skip_paralogs=False,
 
 def ensp_and_seq_from_seq_member(seq_member_id, curr):
     curr.execute('''SELECT stable_id, version, sequence_id from seq_member
-                    WHERE seq_member_id = ?''', (seq_member_id,))
+                    WHERE seq_member_id = ?''', (str(seq_member_id),))
     result = curr.fetchone()
     curr.execute('''SELECT sequence from sequence WHERE sequence_id = ?''',
-                  (result[2]))
+                  (str(result[2]),))
     seq_res = curr.fetchone()
     return result[0], seq_res[0]
 
@@ -310,18 +310,18 @@ def symbol_lookup(symbol, curr, taxon_id='9606'):
     gene_fields = ['gene_member_id', 'stable_id', 'version', 'taxon_id',
                    'biotype_group', 'canonical_member_id', 'display_label',
                    'taxon_name']
-    curr.execute('''select * from gene_member WHERE g1.display_label = ? ANDy
-                    g1.taxon_id = ?''', (gene, taxon_id))
+    curr.execute('''select * from gene_member WHERE display_label = ? AND
+                    taxon_id = ?''', (symbol, taxon_id))
     results = curr.fetchall()
     if not results:
         raise ValueError("No results found for symbol '{}' and taxon ID {}."
                          .format(symbol, taxon_id))
-    if len(results != 1):
+    if len(results) != 1:
         raise ValueError("Multiple results found for symbol " +
                          "'{}' and taxon ID {}. ".format(symbol, taxon_id) +
                          "Try a gene ID instead.")
     d = dict((k, v) for k, v in zip(gene_fields, results[0]))
-    protein, seq = ensp_and_seq_from_seq_member(d['canonical_member_id'])
+    protein, seq = ensp_and_seq_from_seq_member(d['canonical_member_id'], curr)
     d['protein'] = protein
     d['seq'] = seq
     return d
@@ -331,7 +331,7 @@ def local_lookups(gene, pos, db, paralog_lookups=False, line_length=60,
                   all_homologs=False, output_alignments=None):
     conn = sqlite3.connect(db)
     curr = conn.cursor()
-    lookup_result = symbol_lookup(gene)
+    lookup_result = symbol_lookup(gene, curr)
     homolog_fields = ['homology_id', 'gene_member_id', 'seq_member_id',
                       'cigar_line', 'perc_cov', 'perc_id', 'perc_pos',
                       'description', 'is_high_confidence']
