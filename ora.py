@@ -294,59 +294,14 @@ def parse_homology_data(data, positions, protein_id=None, skip_paralogs=False,
     return results, paralogs
 
 
-def get_options():
-    parser = argparse.ArgumentParser(
-        description='''Search for protein features in orthologs''')
-    parser.add_argument("-g", "--gene", required=True,
-                        help='''Gene/protein ID to search with. Accession types
-                        will be inferred from input and the corresponding
-                        Ensembl gene ID will be identified.''')
-    parser.add_argument("-p", "--pos", required=True, type=int, nargs='+',
-                        help='''Position(s) in protein to search. This must be
-                        relative to the canonical Ensembl transcript as used by
-                        Ensembl's Compara database.''')
-    parser.add_argument("--paralog_lookups", action='store_true',
-                        help='''Also perform homology lookups on paralogs
-                        identified.''')
-    parser.add_argument("--all_homologs", action='store_true',
-                        help='''Output alignment information for all homologs
-                        even if no features are found.''')
-    parser.add_argument("--output_alignments", help='''Output alignments of
-                        with hits to this file.''')
-    parser.add_argument("--line_length", type=int, default=60,
-                        help='''Length of sequence lines in alignment output.
-                        Default=60.''')
-    parser.add_argument("--timeout", type=int, default=10,
-                        help='''Lookup timeout (in seconds) for Ensembl REST
-                        queries. Default=10''')
-    parser.add_argument("--max_retries", type=int, default=2,
-                        help='''Maximum retry attempts for Ensembl REST
-                        queries. Default=2''')
-    parser.add_argument("--debug", action='store_true',
-                        help='Add debugging messages to output.')
-    parser.add_argument("--quiet", action='store_true',
-                        help='Only output warning logger messages.')
-    parser.add_argument("--silent", action='store_true',
-                        help='Only output error logger messages.')
-    return parser
+def local_lookups(gene, pos, db, paralog_lookups=False, line_length=60,
+                  all_homologs=False, output_alignments=None):
+    raise NotImplementedError("Local lookups not yet implemented!")
 
 
-def main(gene, pos, paralog_lookups=False, line_length=60, timeout=10.0,
-         max_retries=2, all_homologs=False, output_alignments=None,
-         quiet=False, debug=False, silent=False):
-    if silent:
-        logger.setLevel(logging.ERROR)
-    elif quiet:
-        logger.setLevel(logging.WARN)
-    elif debug:
-        logger.setLevel(logging.DEBUG)
-    formatter = logging.Formatter(
-        '[%(asctime)s] %(name)s - %(levelname)s - %(message)s')
-    ch = logging.StreamHandler()
-    ch.setLevel(logger.level)
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
-    unipro_logger.setLevel(logger.level)
+def remote_lookups(gene, pos, paralog_lookups=False, line_length=60,
+                   timeout=10.0, max_retries=2, all_homologs=False,
+                   output_alignments=None):
     ens_rest.logger.setLevel(logger.level)
     for handler in ens_rest.logger.handlers + unipro_logger.handlers:
         handler.setLevel(logger.level)
@@ -408,6 +363,75 @@ def main(gene, pos, paralog_lookups=False, line_length=60, timeout=10.0,
         line = [str(res[x.lower()]) for x in header_fields] + \
                [str(res['features'][x]) for x in feat_fields]
         print("\t".join(line))
+
+
+def get_options():
+    parser = argparse.ArgumentParser(
+        description='''Search for protein features in orthologs''')
+    parser.add_argument("-g", "--gene", required=True,
+                        help='''Gene/protein ID to search with. Accession types
+                        will be inferred from input and the corresponding
+                        Ensembl gene ID will be identified.''')
+    parser.add_argument("-p", "--pos", required=True, type=int, nargs='+',
+                        help='''Position(s) in protein to search. This must be
+                        relative to the canonical Ensembl transcript as used by
+                        Ensembl's Compara database.''')
+    parser.add_argument("-d", "--db",
+                        help='''Local sqlite3 database to use for lookups. If
+                        not provided lookups will be performed via Ensembl REST
+                        lookups.''')
+    parser.add_argument("--paralog_lookups", action='store_true',
+                        help='''Also perform homology lookups on paralogs
+                        identified.''')
+    parser.add_argument("--all_homologs", action='store_true',
+                        help='''Output alignment information for all homologs
+                        even if no features are found.''')
+    parser.add_argument("--output_alignments", help='''Output alignments of
+                        with hits to this file.''')
+    parser.add_argument("--line_length", type=int, default=60,
+                        help='''Length of sequence lines in alignment output.
+                        Default=60.''')
+    parser.add_argument("--timeout", type=int, default=10,
+                        help='''Lookup timeout (in seconds) for Ensembl REST
+                        queries. Default=10''')
+    parser.add_argument("--max_retries", type=int, default=2,
+                        help='''Maximum retry attempts for Ensembl REST
+                        queries. Default=2''')
+    parser.add_argument("--debug", action='store_true',
+                        help='Add debugging messages to output.')
+    parser.add_argument("--quiet", action='store_true',
+                        help='Only output warning logger messages.')
+    parser.add_argument("--silent", action='store_true',
+                        help='Only output error logger messages.')
+    return parser
+
+
+def main(gene, pos, db=None, paralog_lookups=False, line_length=60,
+         timeout=10.0, max_retries=2, all_homologs=False,
+         output_alignments=None, quiet=False, debug=False, silent=False):
+    if silent:
+        logger.setLevel(logging.ERROR)
+    elif quiet:
+        logger.setLevel(logging.WARN)
+    elif debug:
+        logger.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        '[%(asctime)s] %(name)s - %(levelname)s - %(message)s')
+    ch = logging.StreamHandler()
+    ch.setLevel(logger.level)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    unipro_logger.setLevel(logger.level)
+    if db is None:
+        remote_lookups(gene=gene, pos=pos, paralog_lookups=paralog_lookups,
+                       line_length=line_length, timeout=timeout,
+                       max_retries=max_retries, all_homologs=all_homologs,
+                       output_alignments=output_alignments)
+    else:
+        local_lookups(gene=gene, pos=pos, db=db,
+                      paralog_lookups=paralog_lookups, line_length=line_length,
+                      all_homologs=all_homologs,
+                      output_alignments=output_alignments)
 
 
 if __name__ == '__main__':
