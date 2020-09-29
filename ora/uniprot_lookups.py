@@ -13,6 +13,7 @@ ch.setLevel(logger.level)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
+feat_fields = ['UniprotID', 'Start', 'Stop', 'Feature', 'Description']
 _sprot_prefix = os.path.join(os.path.dirname(__file__),
                              "data",
                              "sprot.")
