@@ -41,6 +41,8 @@ class EnsemblRestQueries(object):
             self.req_count = 0
         self.logger.debug("Retrieving {}".format(self.server+endpoint))
         headers = {"Content-Type": "application/json"}
+        if not endpoint.startswith('/'):
+            endpoint = '/' + endpoint
         exception = None
         try:
             if data:
