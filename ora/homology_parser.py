@@ -4,10 +4,13 @@ from ora.uniprot_lookups import get_uniprot_features, feat_fields
 
 ParalogLookup = namedtuple("ParalogLookup", "gene protein position")
 uniprot_lookups = set()
+header_fields = ['Query_Symbol', 'Query_Gene', 'Query_Protein', 'Query_Pos',
+                 'Query_AA', 'Homolog_Symbol', 'Homolog_Gene',
+                 'Homolog_Protein', 'Orthology_Type', 'Species', 'Percent_ID',
+                 'Percent_Pos', 'Homolog_Pos', 'Homolog_AA']
 
-
-def parse_homology_data(homs, positions, logger, protein_id=None, skip_paralogs=False,
-                        output_all_orthologs=False):
+def parse_homology_data(homs, positions, logger, protein_id=None,
+                        skip_paralogs=False, output_all_orthologs=False):
     '''
         From a list of homologies (generated from Ensembl REST look-ups
         or ora.local_lookups) return results detailing homologies and any
@@ -53,10 +56,12 @@ def parse_homology_data(homs, positions, logger, protein_id=None, skip_paralogs=
                     for f in ufeats:
                         result = dict(
                             query_gene=s_id,
+                            query_symbol=homs[i]['source'].get('symbol'),
                             query_protein=s_protein,
                             query_pos=pos,
                             query_aa=s_seq[p],
                             homolog_gene=s_id,
+                            homolog_symbol=homs[i]['source'].get('symbol'),
                             homolog_protein=s_protein,
                             orthology_type="self",
                             species=homs[i]['source']['species'],
@@ -83,10 +88,14 @@ def parse_homology_data(homs, positions, logger, protein_id=None, skip_paralogs=
                 result_template = dict(
                                     query_gene=s_id,
                                     query_protein=s_protein,
+                                    query_symbol=homs[i]['source'].get(
+                                        'symbol'),
                                     query_pos=pos,
                                     query_aa=s_seq[p],
                                     homolog_gene=t_id,
                                     homolog_protein=t_protein,
+                                    homolog_symbol=homs[i]['target'].get(
+                                        'symbol'),
                                     orthology_type=hom_type,
                                     species=homs[i]['target']['species'],
                                     percent_id=homs[i]['target']['perc_id'],
@@ -115,3 +124,23 @@ def parse_homology_data(homs, positions, logger, protein_id=None, skip_paralogs=
     return results, paralogs
 
 
+def check_paralog_lookups(original_ensg, output_results, results):
+    '''
+        If we have results with a paralog of our original query gene as
+        the query gene we should output an alignment of our original
+        query gene and the paralog if we aren't already doing so. This
+        returns results for our original query gene and these paralogs
+        if not already in our output_results.
+    '''
+    # All pairwise comparisons in our output list
+    pair_comps = set((r['query_gene'], r['homolog_gene']) for r in
+                     output_results)
+    # Pairwise comparisons where the query gene is paralogous to our query
+    para_comps = set((r['query_gene'], r['homolog_gene']) for r in
+                     output_results if r['query_gene'] != original_ensg)
+    extra = list()
+    for pair in para_comps:
+        if (original_ensg, pair[0]) not in pair_comps:
+            extra.extend(r for r in results if r['query_gene'] == original_ensg
+                         and r['homolog_gene'] == pair[0])
+    return extra

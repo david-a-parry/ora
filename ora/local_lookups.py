@@ -1,8 +1,11 @@
+import sys
 import logging
 import sqlite3
 from collections import defaultdict, namedtuple
 from ora.alignments import write_alignments, cigar_to_align_string
 from ora.alignments import get_align_pos, align_pos_to_amino_acid
+from ora.homology_parser import parse_homology_data, check_paralog_lookups
+from ora.homology_parser import header_fields as result_header_fields
 from ora.id_parser import parse_id
 from ora.uniprot_lookups import get_uniprot_features, feat_fields
 from ora.uniprot_lookups import logger as unipro_logger
@@ -96,8 +99,69 @@ def symbol_lookup(symbol, curr, taxon_id=9606):
     return parse_gene_details(results[0], curr)
 
 
-def merge_and_parse_homologies(query, target, query_align, target_align):
-    raise NotImplementedError("local homology parsing is not implmented yet!")
+def combine_query_and_target(query, target, query_homology, target_homology):
+    q_align = cigar_to_align_string(query['protein'].sequence,
+                                    query_homology['cigar_line'])
+    t_align = cigar_to_align_string(target['protein'].sequence,
+                                    target_homology['cigar_line'])
+    homology = dict(source=dict(), target=dict())
+    for k, gene in zip(['source', 'target'], [query, target]):
+        homology[k]['species'] = gene['taxon_name']
+        homology[k]['id'] = gene['stable_id']
+        homology[k]['symbol'] = gene['display_label']
+        homology[k]['protein_id'] = gene['protein'].protein
+        homology[k]['align_seq'] = cigar_to_align_string(
+            gene['protein'].sequence,
+            query_homology['cigar_line'])
+    for k, hom in zip(['source', 'target'], [query_homology, target_homology]):
+        homology[k]['perc_id'] = hom['perc_id']
+        homology[k]['perc_pos'] = hom['perc_pos']
+    homology['source']['align_seq'] = q_align
+    homology['target']['align_seq'] = t_align
+    homology['type'] = hom['description']
+    return homology
+
+
+def get_homologies(gene_details, curr):
+    homolog_fields = ['homology_id', 'gene_member_id', 'seq_member_id',
+                      'cigar_line', 'perc_cov', 'perc_id', 'perc_pos',
+                      'description', 'is_high_confidence']
+    homologies = dict()
+    target_homologies = dict()
+    target_genes = dict()
+    curr.execute('''SELECT * from homology_member WHERE gene_member_id = ?''',
+                 (gene_details['gene_member_id'],))
+    for row in curr:
+        rd = dict((k, v) for k, v in zip(homolog_fields, row))
+        if rd['description'] in orth_types:
+            homologies[rd['homology_id']] = rd
+    for h_id, gm_id in ((x['homology_id'], x['gene_member_id']) for x in
+                        homologies.values()):
+        curr.execute('''SELECT * from homology_member WHERE homology_id = ? AND
+                     gene_member_id != ?''', (str(h_id), str(gm_id)))
+        rd = dict((k, v) for k, v in zip(homolog_fields, curr.fetchone()))
+        target_homologies[h_id] = rd
+        t_gm_id = rd['gene_member_id']
+        curr.execute('SELECT * from gene_member WHERE gene_member_id = ?',
+                     (str(t_gm_id),))
+        target_genes[t_gm_id] = parse_gene_details(curr.fetchone(), curr)
+    q_seq = gene_details['protein'][1]
+    hom_data = []
+    for k in homologies:
+        try:
+            target = target_homologies[k]
+        except KeyError:
+            raise KeyError("Missing target homology for homology_id=" +
+                           "{} and gene_member={}. ".format(
+                               k, gene_details['gene_member_id']) +
+                           "Please check your database is complete.")
+        merged = combine_query_and_target(
+            query=gene_details,
+            target=target_genes[target['gene_member_id']],
+            query_homology=homologies[k],
+            target_homology=target)
+        hom_data.append(merged)
+    return hom_data
 
 
 def local_lookups(gene, pos, db, paralog_lookups=False, line_length=60,
@@ -121,40 +185,44 @@ def local_lookups(gene, pos, db, paralog_lookups=False, line_length=60,
     conn = sqlite3.connect(db)
     curr = conn.cursor()
     lookup_result = get_gene_details(gene, curr)
-    homolog_fields = ['homology_id', 'gene_member_id', 'seq_member_id',
-                      'cigar_line', 'perc_cov', 'perc_id', 'perc_pos',
-                      'description', 'is_high_confidence']
-    homologies = dict()
-    target_homologies = dict()
-    smember2prot = dict()  # type: dict[int, ProteinSeq]
-    curr.execute('''SELECT * from homology_member WHERE gene_member_id = ?''',
-                 (lookup_result['gene_member_id'],))
-    for row in curr:
-        rd = dict((k, v) for k, v in zip(homolog_fields, row))
-        if rd['description'] in orth_types:
-            homologies[rd['homology_id']] = rd
-    for h_id, gm_id in ((x['homology_id'], x['gene_member_id']) for x in
-                        homologies.values()):
-        curr.execute('''SELECT * from homology_member WHERE homology_id = ? AND
-                     gene_member_id != ?''', (str(h_id), str(gm_id)))
-        rd = dict((k, v) for k, v in zip(homolog_fields, curr.fetchone()))
-        target_homologies[h_id] = rd
-        protein, seq, lngth = ensp_and_seq_from_seq_member(rd['seq_member_id'],
-                                                           curr)
-        smember2prot[rd['seq_member_id']] = ProteinSeq(protein, seq, lngth)
-    q_seq = lookup_result['protein'][1]
-    for k in homologies:
-        try:
-            target = target_homologies[k]
-        except KeyError:
-            raise KeyError("Missing target homology for homology_id=" +
-                           "{} and gene_member={}. ".format(
-                               k, lookup_result['gene_member_id']) +
-                           "Please check your database is complete.")
-        t_seq = smember2prot[target['seq_member_id']][1]
-        q_align = cigar_to_align_string(q_seq, homologies[k]['cigar_line'])
-        t_align = cigar_to_align_string(t_seq, target['cigar_line'])
-        merge_and_parse_homologies(query=homologies[k], target=target,
-                                   query_align=q_align, target_align=t_align)
-#    if output_alignments:
-#        alignment_fh = open(output_alignments, 'wt')
+    hom_data = get_homologies(lookup_result, curr)
+    results, paralogs = parse_homology_data(hom_data,
+                                            pos,
+                                            logger,
+                                            output_all_orthologs=all_homologs)
+    if paralog_lookups:
+        n_paralogs = len(paralogs.keys())
+        i = 0
+        for gene_id, paralog_list in paralogs.items():
+            i += 1
+            logger.info("Parsing paralog {:,} of {:,}".format(i, n_paralogs))
+            paralog_details = ensg_lookup(gene_id, curr)
+            pdata = get_homologies(paralog_details, curr)
+            pro2pos = defaultdict(list)
+            for para in paralog_list:
+                pro2pos[para.protein].append(para.position)
+            for protein, positions in pro2pos.items():
+                p_results, _ = parse_homology_data(pdata,
+                                                   positions,
+                                                   logger,
+                                                   protein_id=protein,
+                                                   skip_paralogs=True)
+                results.extend(p_results)
+    output_results = [r for r in results if r['should_output']]
+    if not output_results:
+        logger.info("No results for {} position {}".format(gene, pos))
+        sys.exit()
+    print("\t".join(result_header_fields + feat_fields))
+    if output_alignments:
+        alignment_fh = open(output_alignments, 'wt')
+        extra_alignments = check_paralog_lookups(lookup_result['stable_id'],
+                                                 output_results,
+                                                 results)
+        write_alignments(output_results + extra_alignments,
+                         alignment_fh,
+                         linelen=line_length)
+        alignment_fh.close()
+    for res in output_results:
+        line = [str(res[x.lower()]) for x in result_header_fields] + \
+               [str(res['features'][x]) for x in feat_fields]
+        print("\t".join(line))

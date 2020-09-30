@@ -49,7 +49,8 @@ def seq_and_pos_from_results(results):
             pairs[k] = dict(align_positions=list(), query_positions=list(),
                             query_aas=list())
             for x in ('query_species', 'species', 'query_protein', 'query_seq',
-                      'homolog_protein', 'homolog_seq'):
+                      'homolog_protein', 'homolog_seq', 'query_symbol',
+                      'homolog_symbol'):
                 pairs[k][x] = res[x]
         pairs[k]['align_positions'].append(align_pos)
         pairs[k]['query_positions'].append(res['query_pos'])
@@ -110,11 +111,15 @@ def arrange_labels(label_tups, line_length, l_margin):
     return label_lines
 
 
-def write_alignments(results, fh, gene2symbol, linelen=60):
+def write_alignments(results, fh, gene2symbol=None, linelen=60):
     for query_hom, res in seq_and_pos_from_results(results).items():
         query_gene, hom_gene = query_hom
-        qsymbol = gene2symbol.get(query_gene, '?')
-        hsymbol = gene2symbol.get(hom_gene, '?')
+        if gene2symbol:
+            qsymbol = gene2symbol.get(query_gene, '?')
+            hsymbol = gene2symbol.get(hom_gene, '?')
+        else:
+            qsymbol = res['query_symbol']
+            hsymbol = res['homolog_symbol']
         header = "|{} {} vs {} {} position ".format(
             qsymbol, res['query_species'], hsymbol, res['species']) + \
             ",".join(str(x) for x in sorted(set(res['query_positions']))) + "|"

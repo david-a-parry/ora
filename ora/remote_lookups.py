@@ -6,7 +6,8 @@ from ora.id_parser import parse_id
 from ora.uniprot_lookups import feat_fields
 from ora.uniprot_lookups import logger as unipro_logger
 from ora.alignments import write_alignments
-from ora.homology_parser import parse_homology_data
+from ora.homology_parser import parse_homology_data, check_paralog_lookups
+from ora.homology_parser import header_fields as result_header_fields
 
 ensg2symbol = dict()
 ens_rest = EnsemblRestQueries()
@@ -38,28 +39,6 @@ def get_gene_details(x, species='human'):
             return data[0]['id']
     sys.exit("FAILED: Could not retrieve Ensembl gene ID for input '{}'"
              .format(x))
-
-
-def check_paralog_lookups(original_ensg, output_results, results):
-    '''
-        If we have results with a paralog of our original query gene as
-        the query gene we should output an alignment of our original
-        query gene and the paralog if we aren't already doing so. This
-        returns results for our original query gene and these paralogs
-        if not already in our output_results.
-    '''
-    # All pairwise comparisons in our output list
-    pair_comps = set((r['query_gene'], r['homolog_gene']) for r in
-                     output_results)
-    # Pairwise comparisons where the query gene is paralogous to our query
-    para_comps = set((r['query_gene'], r['homolog_gene']) for r in
-                     output_results if r['query_gene'] != original_ensg)
-    extra = list()
-    for pair in para_comps:
-        if (original_ensg, pair[0]) not in pair_comps:
-            extra.extend(r for r in results if r['query_gene'] == original_ensg
-                         and r['homolog_gene'] == pair[0])
-    return extra
 
 
 def lookup_symbols(ensgs):
@@ -100,13 +79,6 @@ def remote_lookups(gene, pos, paralog_lookups=False, line_length=60,
     data = ens_rest.get_homologies(ensg)
     if data is None:
         sys.exit("ERROR: Could not find ensembl gene '{}'".format(ensg))
-    if output_alignments:
-        alignment_fh = open(output_alignments, 'wt')
-    header_fields = '''Query_Symbol Query_Gene Query_Protein Query_Pos
-                       Query_AA Homolog_Symbol Homolog_Gene Homolog_Protein
-                       Orthology_Type Species Percent_ID Percent_Pos
-                       Homolog_Pos Homolog_AA'''.split()
-    print("\t".join(header_fields + feat_fields))
     results, paralogs = parse_homology_data(data['data'][0]['homologies'],
                                             pos,
                                             logger,
@@ -130,6 +102,7 @@ def remote_lookups(gene, pos, paralog_lookups=False, line_length=60,
                 p_results, _ = parse_homology_data(
                     pdata['data'][0]['homologies'],
                     positions,
+                    logger,
                     protein_id=protein,
                     skip_paralogs=True)
                 results.extend(p_results)
@@ -137,10 +110,12 @@ def remote_lookups(gene, pos, paralog_lookups=False, line_length=60,
     if not output_results:
         logger.info("No results for {} position {}".format(gene, pos))
         sys.exit()
+    print("\t".join(result_header_fields + feat_fields))
     symbol_lookups = set(x['homolog_gene'] for x in output_results)
     symbol_lookups.update(x['query_gene'] for x in output_results)
     ensg2symbol = lookup_symbols(symbol_lookups)
     if output_alignments:
+        alignment_fh = open(output_alignments, 'wt')
         extra_alignments = check_paralog_lookups(ensg, output_results, results)
         write_alignments(output_results + extra_alignments, alignment_fh,
                          ensg2symbol,
@@ -149,6 +124,6 @@ def remote_lookups(gene, pos, paralog_lookups=False, line_length=60,
     for res in output_results:
         res['query_symbol'] = ensg2symbol.get(res['query_gene'], '-')
         res['homolog_symbol'] = ensg2symbol.get(res['homolog_gene'], '-')
-        line = [str(res[x.lower()]) for x in header_fields] + \
+        line = [str(res[x.lower()]) for x in result_header_fields] + \
                [str(res['features'][x]) for x in feat_fields]
         print("\t".join(line))
