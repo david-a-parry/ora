@@ -47,14 +47,14 @@ def main(gene, pos, db=None, paralog_lookups=False, line_length=60,
          timeout=10.0, max_retries=2, all_homologs=False,
          output_alignments=None, quiet=False, debug=False, silent=False):
     if db is None:
-        from ora.remote_lookups import remote_lookups
+        from ora.remote import remote_lookups
         remote_lookups(gene=gene, pos=pos, paralog_lookups=paralog_lookups,
                        line_length=line_length, timeout=timeout,
                        max_retries=max_retries, all_homologs=all_homologs,
                        output_alignments=output_alignments, quiet=quiet,
                        debug=debug, silent=silent)
     else:
-        from ora.local_lookups import local_lookups
+        from ora.local import local_lookups
         local_lookups(gene=gene, pos=pos, db=db,
                       paralog_lookups=paralog_lookups, line_length=line_length,
                       all_homologs=all_homologs,
