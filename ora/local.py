@@ -100,24 +100,20 @@ def symbol_lookup(symbol, curr, taxon_id=9606):
 
 
 def combine_query_and_target(query, target, query_homology, target_homology):
-    q_align = cigar_to_align_string(query['protein'].sequence,
-                                    query_homology['cigar_line'])
-    t_align = cigar_to_align_string(target['protein'].sequence,
-                                    target_homology['cigar_line'])
     homology = dict(source=dict(), target=dict())
     for k, gene in zip(['source', 'target'], [query, target]):
         homology[k]['species'] = gene['taxon_name']
         homology[k]['id'] = gene['stable_id']
         homology[k]['symbol'] = gene['display_label']
         homology[k]['protein_id'] = gene['protein'].protein
-        homology[k]['align_seq'] = cigar_to_align_string(
-            gene['protein'].sequence,
-            query_homology['cigar_line'])
+        homology[k]['sequence'] = gene['protein'].sequence
     for k, hom in zip(['source', 'target'], [query_homology, target_homology]):
         homology[k]['perc_id'] = hom['perc_id']
         homology[k]['perc_pos'] = hom['perc_pos']
-    homology['source']['align_seq'] = q_align
-    homology['target']['align_seq'] = t_align
+        homology[k]['cigar_line'] = hom['cigar_line']
+        homology[k]['align_seq'] = cigar_to_align_string(
+            homology[k]['sequence'],
+            hom['cigar_line'])
     homology['type'] = hom['description']
     return homology
 
