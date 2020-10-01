@@ -14,7 +14,7 @@ logger = logging.getLogger("ORA")
 logger.setLevel(logging.INFO)
 
 uniprot_lookups = set()
-orth_types = ('ortholog_one2one', 'other_paralog', 'within_species_paralog')
+orth_blacklist = ('gene_split', 'alt_allele')
 gene_fields = ['gene_member_id', 'stable_id', 'version', 'taxon_id',
                'biotype_group', 'canonical_member_id', 'display_label',
                'taxon_name']
@@ -129,7 +129,7 @@ def get_homologies(gene_details, curr):
                  (gene_details['gene_member_id'],))
     for row in curr:
         rd = dict((k, v) for k, v in zip(homolog_fields, row))
-        if rd['description'] in orth_types:
+        if rd['description'] not in orth_blacklist:
             homologies[rd['homology_id']] = rd
     for h_id, gm_id in ((x['homology_id'], x['gene_member_id']) for x in
                         homologies.values()):
