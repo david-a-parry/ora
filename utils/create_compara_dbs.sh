@@ -21,9 +21,15 @@ else
     mkdir -p $DLDIR
 fi
 
-ENSURL=ftp://ftp.ensembl.org/pub/release-100/mysql/ensembl_compara_100
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 set -euo pipefail
+
+echo $(date) Finding latest compara database
+CURRENT_URL=ftp://ftp.ensembl.org/pub/current_mysql/ 
+COMPARA=$(curl $CURRENT_URL | grep compara | rev | cut -f 1 -d ' ' | rev)
+ENSURL=${CURRENT_URL}/${COMPARA}
+
+echo $(date) Using URL: $ENSURL
 
 echo $(date) Retrieving tables
 for TABLE in seq_member sequence homology homology_member gene_member ncbi_taxa_name
