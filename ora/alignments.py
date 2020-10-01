@@ -1,5 +1,11 @@
 import re
-from Bio.SubsMat.MatrixInfo import pam250
+import Bio
+from Bio import __version__ as bio_version
+if bio_version < '1.77':
+    from Bio.SubsMat.MatrixInfo import pam250
+else:
+    from Bio.Align import substitution_matrices
+    pam250 = substitution_matrices.load('pam250')
 
 cigar_re = re.compile('(\d+)?([\D])')
 
