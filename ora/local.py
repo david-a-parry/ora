@@ -93,9 +93,11 @@ def symbol_lookup(symbol, curr, taxon_id=9606):
         raise ValueError("No results found for symbol '{}' and taxon ID {}."
                          .format(symbol, taxon_id))
     if len(results) != 1:
-        raise ValueError("Multiple results found for symbol " +
-                         "'{}' and taxon ID {}. ".format(symbol, taxon_id) +
-                         "Try a gene ID instead.")
+        results = [x for x in results if x[1].startswith("ENS")]  # ignore LRGs
+        if len(results) != 1:
+            raise ValueError("Multiple results found for symbol " +
+                            "'{}' and taxon ID {}. ".format(symbol, taxon_id) +
+                            "Try a gene ID instead.")
     return parse_gene_details(results[0], curr)
 
 
