@@ -1,6 +1,6 @@
 import sys
 import logging
-from collections import namedtuple, defaultdict
+from collections import defaultdict
 from ora.ensembl_rest_queries import EnsemblRestQueries
 from ora.id_parser import parse_id
 from ora.uniprot_lookups import feat_fields

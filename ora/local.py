@@ -3,11 +3,10 @@ import logging
 import sqlite3
 from collections import defaultdict, namedtuple
 from ora.alignments import write_alignments, cigar_to_align_string
-from ora.alignments import get_align_pos, align_pos_to_amino_acid
 from ora.homology_parser import parse_homology_data, check_paralog_lookups
 from ora.homology_parser import header_fields as result_header_fields
 from ora.id_parser import parse_id
-from ora.uniprot_lookups import get_uniprot_features, feat_fields
+from ora.uniprot_lookups import feat_fields
 from ora.uniprot_lookups import logger as unipro_logger
 
 logger = logging.getLogger("ORA")
@@ -143,7 +142,6 @@ def get_homologies(gene_details, curr):
         curr.execute('SELECT * from gene_member WHERE gene_member_id = ?',
                      (str(t_gm_id),))
         target_genes[t_gm_id] = parse_gene_details(curr.fetchone(), curr)
-    q_seq = gene_details['protein'][1]
     hom_data = []
     for k in homologies:
         try:
