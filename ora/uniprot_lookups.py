@@ -20,7 +20,6 @@ _sprot_prefix = os.path.join(os.path.dirname(__file__),
 _ens_id_tab = _sprot_prefix + 'ens_ids.tab.gz'
 _features_tab = _sprot_prefix + 'features.tab.gz'
 _variants_tab = _sprot_prefix + 'seq_vars.tab.gz'
-_isoform_seq_tab = _sprot_prefix + 'isoform_seqs.tab.gz'
 
 ensp2uniprot = dict()
 variants = dict()
