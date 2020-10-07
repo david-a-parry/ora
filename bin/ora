@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import argparse
-
+from ora import __version__ as ora_version
 
 def get_options():
     parser = argparse.ArgumentParser(
@@ -40,6 +40,8 @@ def get_options():
                         help='Only output warning logger messages.')
     parser.add_argument("--silent", action='store_true',
                         help='Only output error logger messages.')
+    parser.add_argument("--version", action='version', version=ora_version,
+                        help='Print version and exit.')
     return parser
 
 
