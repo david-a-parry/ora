@@ -20,7 +20,7 @@ setup(
     author="David A. Parry",
     author_email="david.parry@igmm.ed.ac.uk",
     url='https://github.com/david-a-parry/ora',
-    download_url='https://github.com/david-a-parry/ora/archive/0.1.tar.gz',
+    download_url='https://github.com/david-a-parry/ora/archive/{}.tar.gz'.format(verstr),
     license='MIT',
     install_requires=['requests', 'biopython'],
     scripts=["bin/ora"],
