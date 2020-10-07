@@ -1,12 +1,21 @@
 try:
-    from setuptools import setup, find_packages
+    from setuptools import setup
 except ImportError:
     from distutils.core import setup
+import re
+v_file="ora/version.py"
+v_line = open(v_file, "rt").read()
+v_re = r"^__version__ = ['\"]([^'\"]*)['\"]"
+match = re.search(v_re, v_line, re.M)
+if match:
+    verstr = match.group(1)
+else:
+    raise RuntimeError("Unable to find version string in {}.".format(v_file))
 
 setup(
     name="ora",
     packages=["ora"],
-    version="0.1",
+    version=verstr,
     description="Orthologous Residue Annotator",
     author="David A. Parry",
     author_email="david.parry@igmm.ed.ac.uk",
