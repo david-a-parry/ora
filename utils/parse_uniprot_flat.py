@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import sys
 import gzip
 import re
 import argparse
