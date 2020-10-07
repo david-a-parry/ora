@@ -115,7 +115,7 @@ def combine_query_and_target(query, target, query_homology, target_homology):
         homology[k]['align_seq'] = cigar_to_align_string(
             homology[k]['sequence'],
             hom['cigar_line'])
-    homology['type'] = hom['description']
+    homology['type'] = query_homology['description']
     return homology
 
 
