@@ -25,6 +25,15 @@ ensp2uniprot = dict()
 variants = dict()
 uniprot2feats = defaultdict(list)
 feature_lookups = dict()
+initialized = False
+
+
+def initialize():
+    _features_from_uniprot()
+    _uniprot_from_ensp()
+    _read_uniprot_variants()
+    global initialized
+    initialized = True
 
 
 def get_uniprot_features(ensp, start, stop):
@@ -32,10 +41,8 @@ def get_uniprot_features(ensp, start, stop):
         Get Uniprot features from an Ensembl protein identifier and
         amino acid position.
     '''
-    if not ensp2uniprot:
-        _features_from_uniprot()
-        _uniprot_from_ensp()
-        _read_uniprot_variants()
+    if not initialized:
+        initialize()
     ufeats = feature_lookups.get(ensp)
     if ufeats is None:
         ufeats = feats_from_ensp(ensp)
