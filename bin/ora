@@ -72,6 +72,9 @@ def add_vcf_argparser(subparsers):
                         Required if running in "vcf" mode. If running in "gene"
                         mode and not provided lookups will be performed via
                         Ensembl REST lookups.''')
+    parser.add_argument("-o", "--output",
+                        help='''VCF/BCF output file. If not provided will
+                        default to STDOUT.''')
     parser.add_argument("--paralog_lookups", action='store_true',
                         help='''Also perform homology lookups on paralogs
                         identified.''')
