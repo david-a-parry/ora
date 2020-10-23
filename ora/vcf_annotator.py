@@ -7,7 +7,7 @@ from vase.vcf_reader import VcfReader
 
 logger = logging.getLogger("ORA")
 logger.setLevel(logging.INFO)
-ReadBuffer = namedtuple('record protein positions')
+ReadBuffer = namedtuple('ReadBuffer', 'record gene proteins positions')
 
 
 def vcf_annotator(args):
