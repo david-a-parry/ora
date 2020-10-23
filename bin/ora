@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
+import sys
 import argparse
 from ora import __version__ as ora_version
 
-def get_options():
-    parser = argparse.ArgumentParser(
-        description='''Search for protein features in orthologs''')
+modes = ['gene', 'vcf']
+
+
+def add_gene_argparser(subparsers):
+    parser = subparsers.add_parser(
+        'gene',
+        description='''Search for protein features in orthologs''',
+        help='''Search for othologous residue annotations for given gene and
+        position(s)''',
+        add_help=False)
+    parser.set_defaults(func=gene_lookup)
     parser.add_argument("-g", "--gene", required=True,
                         help='''Gene/protein ID to search with. Accession types
                         will be inferred from input and the corresponding
@@ -14,9 +23,10 @@ def get_options():
                         relative to the canonical Ensembl transcript as used by
                         Ensembl's Compara database.''')
     parser.add_argument("-d", "--db",
-                        help='''Local sqlite3 database to use for lookups. If
-                        not provided lookups will be performed via Ensembl REST
-                        lookups.''')
+                        help='''Local sqlite3 database to use for look-ups.
+                        Required if running in "vcf" mode. If running in "gene"
+                        mode and not provided lookups will be performed via
+                        Ensembl REST lookups.''')
     parser.add_argument("--paralog_lookups", action='store_true',
                         help='''Also perform homology lookups on paralogs
                         identified.''')
@@ -40,31 +50,84 @@ def get_options():
                         help='Only output warning logger messages.')
     parser.add_argument("--silent", action='store_true',
                         help='Only output error logger messages.')
-    parser.add_argument("--version", action='version', version=ora_version,
-                        help='Print version and exit.')
+    parser.add_argument("--help", action='help',
+                        help='Print this help message and exit.')
     return parser
 
 
-def main(gene, pos, db=None, paralog_lookups=False, line_length=60,
-         timeout=10.0, max_retries=2, all_homologs=False,
-         output_alignments=None, quiet=False, debug=False, silent=False):
-    if db is None:
+def add_vcf_argparser(subparsers):
+    parser = subparsers.add_parser(
+        'vcf',
+        description='''Annotate variants with orthologous protein features''',
+        help='''Search for othologous residue annotations for all missense and
+        in-frame indels in a VCF.''',
+        add_help=False)
+    from ora.vcf_annotator import vcf_annotator
+    parser.set_defaults(func=vcf_annotator)
+    parser.add_argument("-i", "--input", required=True,
+                        help='''VCF/BCF input to annotate. Must be annotated
+                        by Ensembl VEP using Ensembl Gene IDs.''')
+    parser.add_argument("-d", "--db", required=True,
+                        help='''Local sqlite3 database to use for look-ups.
+                        Required if running in "vcf" mode. If running in "gene"
+                        mode and not provided lookups will be performed via
+                        Ensembl REST lookups.''')
+    parser.add_argument("--paralog_lookups", action='store_true',
+                        help='''Also perform homology lookups on paralogs
+                        identified.''')
+    parser.add_argument("--all_homologs", action='store_true',
+                        help='''Output alignment information for all homologs
+                        even if no features are found.''')
+    parser.add_argument("--output_alignments", help='''Output alignments of
+                        with hits to this file.''')
+    parser.add_argument("--line_length", type=int, default=60,
+                        help='''Length of sequence lines in alignment output.
+                        Default=60.''')
+    parser.add_argument("--debug", action='store_true',
+                        help='Add debugging messages to output.')
+    parser.add_argument("--quiet", action='store_true',
+                        help='Only output warning logger messages.')
+    parser.add_argument("--silent", action='store_true',
+                        help='Only output error logger messages.')
+    parser.add_argument("--help", action='help',
+                        help='Print this help message and exit.')
+    return parser
+
+
+def gene_lookup(args):
+    if args.db is None:
         from ora.remote import remote_lookups
-        remote_lookups(gene=gene, pos=pos, paralog_lookups=paralog_lookups,
-                       line_length=line_length, timeout=timeout,
-                       max_retries=max_retries, all_homologs=all_homologs,
-                       output_alignments=output_alignments, quiet=quiet,
-                       debug=debug, silent=silent)
+        remote_lookups(gene=args.gene, pos=args.pos,
+                       paralog_lookups=args.paralog_lookups,
+                       line_length=args.line_length, timeout=args.timeout,
+                       max_retries=args.max_retries,
+                       all_homologs=args.all_homologs,
+                       output_alignments=args.output_alignments,
+                       quiet=args.quiet, debug=args.debug, silent=args.silent)
     else:
         from ora.local import local_lookups
-        local_lookups(gene=gene, pos=pos, db=db,
-                      paralog_lookups=paralog_lookups, line_length=line_length,
-                      all_homologs=all_homologs,
-                      output_alignments=output_alignments, quiet=quiet,
-                      debug=debug, silent=silent)
+        local_lookups(gene=args.gene, pos=args.pos, db=args.db,
+                      paralog_lookups=args.paralog_lookups,
+                      line_length=args.line_length,
+                      all_homologs=args.all_homologs,
+                      output_alignments=args.output_alignments,
+                      quiet=args.quiet, debug=args.debug, silent=args.silent)
 
 
 if __name__ == '__main__':
-    argparser = get_options()
-    args = argparser.parse_args()
-    main(**vars(args))
+    parser = argparse.ArgumentParser(
+        description='Ortholog/paralog residue annotator',
+        epilog='''Run `%(prog)s <command> --help` for options/help for a specific
+        command.''')
+    parser.add_argument("--version", action='version', version=ora_version,
+                        help='Print version and exit.')
+    subparsers = parser.add_subparsers(
+        title='available commands',
+        metavar='<{}>'.format('|'.join(modes))
+    )
+    gene = add_gene_argparser(subparsers)
+    vcf = add_vcf_argparser(subparsers)
+    args = parser.parse_args()
+    if len(vars(args)) == 0:
+        sys.exit(parser.format_help())
+    args.func(args)
