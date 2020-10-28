@@ -152,20 +152,20 @@ def vcf_annotator(args):  # TODO rename this method something more apt
     uniprot_lookups.logger.setLevel(logger.level)
     for handler in uniprot_lookups.logger.handlers:
         handler.setLevel(logger.level)
-    logger.info("Connecting to local database '{}'".format(args.db))
-    conn = sqlite3.connect(args.db)
-    curr = conn.cursor()
-    logger.info("Reading UniProt feature data")
-    uniprot_lookups.initialize()
     record_buffer = []
     current_genes = set()
     gene_orthologies = dict()
-    out_fh = sys.stdout if args.output is None else open(args.output, 'wt')
-    out_fh.write("\t".join(header_fields) + "\n")
-    logger.info("Beginning VCF processing")
-    with VcfReader(args.input) as vcf:
+    with VcfReader(args.input) as vcf:  # check we can open VCF first
+        logger.info("Connecting to local database '{}'".format(args.db))
+        conn = sqlite3.connect(args.db)
+        curr = conn.cursor()
+        logger.info("Reading UniProt feature data")
+        uniprot_lookups.initialize()
+        out_fh = sys.stdout if args.output is None else open(args.output, 'wt')
+        out_fh.write("\t".join(header_fields) + "\n")
         n = 0
         progress_interval = 10_000
+        logger.info("Beginning VCF processing")
         for record in vcf:
             csqs = get_csqs(record)
             n += 1
