@@ -24,9 +24,8 @@ def add_gene_argparser(subparsers):
                         Ensembl's Compara database.''')
     parser.add_argument("-d", "--db",
                         help='''Local sqlite3 database to use for look-ups.
-                        Required if running in "vcf" mode. If running in "gene"
-                        mode and not provided lookups will be performed via
-                        Ensembl REST lookups.''')
+                        If not provided lookups will be performed via Ensembl
+                        REST lookups.''')
     parser.add_argument("--paralog_lookups", action='store_true',
                         help='''Also perform homology lookups on paralogs
                         identified.''')
@@ -69,9 +68,7 @@ def add_vcf_argparser(subparsers):
                         by Ensembl VEP using Ensembl Gene IDs.''')
     parser.add_argument("-d", "--db", required=True,
                         help='''Local sqlite3 database to use for look-ups.
-                        Required if running in "vcf" mode. If running in "gene"
-                        mode and not provided lookups will be performed via
-                        Ensembl REST lookups.''')
+                        Required.''')
     parser.add_argument("-o", "--output",
                         help='''VCF/BCF output file. If not provided will
                         default to STDOUT.''')
@@ -120,8 +117,8 @@ def gene_lookup(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Ortholog/paralog residue annotator',
-        epilog='''Run `%(prog)s <command> --help` for options/help for a specific
-        command.''')
+        epilog='''Run `%(prog)s <command> --help` for options/help for a
+        specific command.''')
     parser.add_argument("--version", action='version', version=ora_version,
                         help='Print version and exit.')
     subparsers = parser.add_subparsers(
