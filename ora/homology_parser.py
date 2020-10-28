@@ -9,6 +9,7 @@ header_fields = ['Query_Symbol', 'Query_Gene', 'Query_Protein', 'Query_Pos',
                  'Homolog_Protein', 'Orthology_Type', 'Species', 'Percent_ID',
                  'Percent_Pos', 'Homolog_Pos', 'Homolog_AA']
 
+
 def parse_homology_data(homs, positions, logger, protein_id=None,
                         skip_paralogs=False, output_all_orthologs=False):
     '''
