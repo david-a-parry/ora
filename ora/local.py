@@ -45,6 +45,9 @@ def ensp_and_seq_from_seq_member(seq_member_id, curr):
     curr.execute('''SELECT stable_id, version, sequence_id from seq_member
                     WHERE seq_member_id = ?''', (str(seq_member_id),))
     result = curr.fetchone()
+    if result is None:
+        raise LookupError("No result for seq_member_id = {} ".format(
+            seq_member_id) + "in seq_member table.")
     curr.execute('''SELECT sequence, length from sequence WHERE
                     sequence_id = ?''', (str(result[2]),))
     seq_res = curr.fetchone()
@@ -63,7 +66,8 @@ def ensg_lookup(ensg, curr):
     curr.execute('select * from gene_member WHERE stable_id = ?', (ensg,))
     results = curr.fetchone()
     if not results:
-        raise ValueError("No results found for Ensembl gene '{}'".format(ensg))
+        raise LookupError("No results found for Ensembl gene '{}'".format(ensg)
+                         )
     return parse_gene_details(results, curr)
 
 
@@ -72,15 +76,15 @@ def ensp_lookup(ensp, curr):
                  (ensp,))
     ensgs = curr.fetchone()
     if not ensgs:
-        raise ValueError("No results found for Ensembl protein '{}'".format(
+        raise LookupError("No results found for Ensembl protein '{}'".format(
             ensp))
     curr.execute('select * from gene_member WHERE canonical_member_id = ?',
                  (ensgs[0],))
     results = curr.fetchone()
     if not results:
-        raise ValueError("No results found for Ensembl gene '{}' found".format(
-                         ensgs) + " via lookup of Ensembp protein '{}'".format(
-                         ensp))
+        raise LookupError("No results found for Ensembl gene '{}' ".format(
+                         ensgs) + "found via lookup of Ensembl protein " +
+                         "'{}'".format(ensp))
     return parse_gene_details(results, curr)
 
 
@@ -89,14 +93,15 @@ def symbol_lookup(symbol, curr, taxon_id=9606):
                     taxon_id = ?''', (symbol, str(taxon_id)))
     results = curr.fetchall()
     if not results:
-        raise ValueError("No results found for symbol '{}' and taxon ID {}."
-                         .format(symbol, taxon_id))
+        raise LookupError("No results found for symbol '{}' and taxon ID {}."
+                          .format(symbol, taxon_id))
     if len(results) != 1:
         results = [x for x in results if x[1].startswith("ENS")]  # ignore LRGs
         if len(results) != 1:
-            raise ValueError("Multiple results found for symbol " +
-                            "'{}' and taxon ID {}. ".format(symbol, taxon_id) +
-                            "Try a gene ID instead.")
+            raise LookupError("Multiple results found for symbol " +
+                              "'{}' and taxon ID {}. ".format(symbol,
+                                                              taxon_id) +
+                              "Try a gene ID instead.")
     return parse_gene_details(results[0], curr)
 
 
