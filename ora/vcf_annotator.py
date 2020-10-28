@@ -10,7 +10,7 @@ from vase.vcf_reader import VcfReader
 logger = logging.getLogger("ORA")
 logger.setLevel(logging.INFO)
 ReadBuffer = namedtuple('ReadBuffer',
-                        'record genes symbols proteins positions amino acids')
+                        'record genes symbols proteins positions amino_acids')
 
 
 def get_orthologies(gene, cursor, paralog_lookups=False):
