@@ -8,6 +8,7 @@ else:
     pam250 = substitution_matrices.load('PAM250')
 
 cigar_re = re.compile('(\d+)?([\D])')
+non_gap_re = re.compile('[^-]')
 
 
 def cigar_to_align_string(seq, cigar):
@@ -39,11 +40,26 @@ def get_align_pos(seq, p):
 
 
 def align_pos_to_amino_acid(seq, i):
-    ''' Returns position within protein and the amino acid residue'''
+    ''' Returns position within protein and the amino acid residues'''
     if seq[i] == '-':  # no residue at this position in ortholog
         return -1, '-'
     p = seq[:i + 1].replace('-', '')
     return len(p), p[-1]
+
+
+def align_range_to_amino_acid(seq, start, stop):
+    '''
+        Returns start and end positions within protein and the amino acid
+        residues in alignment (including gaps)
+    '''
+    aa = seq[start:stop + 1]
+    match = non_gap_re.search(aa)
+    if match is None:  # range is gap in aligned sequence
+        return -1, -1, '-'
+    end_trim = len(aa) - len(aa.rstrip('-'))
+    query_start, _ = align_pos_to_amino_acid(seq, start + match.start())
+    query_stop, _ = align_pos_to_amino_acid(seq, stop - end_trim)
+    return query_start, query_stop, aa
 
 
 def seq_and_pos_from_results(results):
