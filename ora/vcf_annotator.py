@@ -1,16 +1,21 @@
 import logging
 import sqlite3
-import pysam
+import sys
 from collections import namedtuple
 from ora import uniprot_lookups
-from ora.alignments import align_pos_to_amino_acid, get_align_pos
+from ora.alignments import align_pos_to_amino_acid, align_range_to_amino_acid
+from ora.alignments import get_align_pos
 from ora.local import ensg_lookup, get_homologies
+from ora.homology_parser import header_fields as result_header_fields
 from vase.vcf_reader import VcfReader
 
 logger = logging.getLogger("ORA")
 logger.setLevel(logging.INFO)
 ReadBuffer = namedtuple('ReadBuffer',
                         'record genes symbols proteins positions amino_acids')
+variant_fields = ['chromosome', 'position', 'id', 'ref', 'alt']
+header_fields = (variant_fields + result_header_fields +
+                 uniprot_lookups.feat_fields)
 
 
 def get_orthologies(gene, cursor, paralog_lookups=False):
@@ -30,40 +35,44 @@ def get_csqs(record, csq_types=['missense_variant', 'inframe_deletion',
             if y in csq_types]
 
 
-def annotate_record(record, results):
-    pass  # TODO!
-
-
 def process_buffer(record_buffer, gene_orthologies):
     results = []
     for rb in record_buffer:
         for i in range(len(rb.genes)):
+            if gene_orthologies[rb.genes[i]] is None:
+                continue
             positions = [int(x) for x in rb.positions[i].split('-')]
             if len(positions) > 1:
                 start, stop = positions
             else:
                 start, stop = positions[0], positions[0]
+            ref_aa, var_aa = rb.amino_acids[i].split('/')
             source_features = uniprot_lookups.get_uniprot_features(
                 rb.proteins[i], start, stop)
-            ref_aa, var_aa = rb.amino_acids[i].split('/')
-            for f in source_features:
-                res = dict(query_gene=rb.genes[i],
-                           query_symbol=rb.symbols[i],
-                           query_protein=rb.proteins[i],
-                           query_pos=rb.positions[i],
-                           query_aa=ref_aa,
-                           homolog_gene=rb.genes[i],
-                           homolog_symbol=rb.symbols[i],
-                           homolog_protein=rb.proteins[i],
-                           orthology_type="self",
-                           species='human',
-                           percent_id=100,
-                           percent_pos=100,
-                           homolog_pos=rb.positions[i],
-                           homolog_aa=ref_aa,
-                           query_species='human',
-                           features=f)
-                results.append(res)
+            if source_features is not None:
+                for f in source_features:
+                    res = dict(chromosome=rb.record.chrom,
+                               position=rb.record.pos,
+                               id=rb.record.id,
+                               ref=rb.record.ref,
+                               alt=rb.record.alt,
+                               query_gene=rb.genes[i],
+                               query_symbol=rb.symbols[i],
+                               query_protein=rb.proteins[i],
+                               query_pos=rb.positions[i],
+                               query_aa=ref_aa,
+                               homolog_gene=rb.genes[i],
+                               homolog_symbol=rb.symbols[i],
+                               homolog_protein=rb.proteins[i],
+                               orthology_type="self",
+                               species='human',
+                               percent_id=100,
+                               percent_pos=100,
+                               homolog_pos=rb.positions[i],
+                               homolog_aa=ref_aa,
+                               query_species='human',
+                               features=f)
+                    results.append(res)
             for orthology in (x for x in
                               gene_orthologies[rb.genes[i]]['homologies'] if
                               x['source']['protein_id'] == rb.proteins[i]):
@@ -73,18 +82,38 @@ def process_buffer(record_buffer, gene_orthologies):
                 t_protein = orthology['target']['protein_id']
                 s_seq = orthology['source']['align_seq']
                 t_seq = orthology['target']['align_seq']
-                p = get_align_pos(s_seq, rb.positions[i])  # TODO handle ranges
-                o, aa = align_pos_to_amino_acid(t_seq, p) if p > 0 else (-1,
-                                                                         '-')
-                if o < 1:
+                s_start = get_align_pos(s_seq, start)
+                if start == stop:
+                    s_stop = s_start
+                    o_start, aa = align_pos_to_amino_acid(t_seq, s_start)
+                    o_stop = o_start
+                else:
+                    s_stop = get_align_pos(s_seq, stop)
+                    o_start, o_stop, aa = align_range_to_amino_acid(t_seq,
+                                                                    s_start,
+                                                                    s_stop)
+                if o_start < 1 and o_stop < 1:
                     continue
-                ufeats = uniprot_lookups.get_uniprot_features(t_protein, o, o)
+                elif o_stop < 1:  # only start position found, treat as SNV
+                    o_stop = o_start
+                elif o_start < 1:  # only stop position found, treat as SNV
+                    o_start = o_stop
+                ufeats = uniprot_lookups.get_uniprot_features(t_protein,
+                                                              o_start,
+                                                              o_stop)
+                if ufeats is None:
+                    continue
                 for f in ufeats:
-                    res = dict(query_gene=s_id,
+                    res = dict(chromosome=rb.record.chrom,
+                               position=rb.record.pos,
+                               id=rb.record.id,
+                               ref=rb.record.ref,
+                               alt=rb.record.alt,
+                               query_gene=s_id,
                                query_protein=s_protein,
                                query_symbol=orthology['source'].get('symbol'),
                                query_pos=rb.positions[i],
-                               query_aa=s_seq[p],
+                               query_aa=s_seq[s_start:s_stop + 1],
                                homolog_gene=t_id,
                                homolog_protein=t_protein,
                                homolog_symbol=orthology['target'].get(
@@ -93,18 +122,21 @@ def process_buffer(record_buffer, gene_orthologies):
                                species=orthology['target']['species'],
                                percent_id=orthology['target']['perc_id'],
                                percent_pos=orthology['target']['perc_pos'],
-                               homolog_pos=o,
+                               homolog_pos=o_start if o_start == o_stop
+                               else "{}-{}".format(o_start, o_stop),
                                query_seq=s_seq,
                                homolog_seq=t_seq,
                                query_species=orthology['source']['species'],
                                homolog_aa=aa,
                                features=f)
                     results.append(res)
-        annotate_record(rb.record, results)
-    return results
+    return ["\t".join([str(res[x.lower()]) for x in variant_fields +
+                       result_header_fields] +
+                      [str(res['features'][x]) for x in
+                      uniprot_lookups.feat_fields]) for res in results]
 
 
-def vcf_annotator(args):
+def vcf_annotator(args):  # TODO rename this method something more apt
     if args.silent:
         logger.setLevel(logging.ERROR)
     elif args.quiet:
@@ -128,26 +160,24 @@ def vcf_annotator(args):
     record_buffer = []
     current_genes = set()
     gene_orthologies = dict()
-    out = '-' if args.output is None else args.output
+    out_fh = sys.stdout if args.output is None else open(args.output, 'wt')
+    out_fh.write("\t".join(header_fields) + "\n")
     logger.info("Beginning VCF processing")
     with VcfReader(args.input) as vcf:
-        # TODO - add header information
-        out_vcf = pysam.VariantFile(out, 'w', header=vcf.header.header)
         n = 0
         progress_interval = 10_000
         for record in vcf:
-            # if does not match our consequence classes and record_buffer empty
-            # just write variant and move on
             csqs = get_csqs(record)
             n += 1
             if n % progress_interval == 0:
                 logger.info("Read {:,} VCF records".format(n))
             if not csqs and not record_buffer:
-                out_vcf.write(record.record)
                 continue
             these_genes = [x['Gene'] for x in csqs]
             if current_genes.isdisjoint(set(these_genes)):
-                process_buffer(record_buffer, gene_orthologies)
+                results = process_buffer(record_buffer, gene_orthologies)
+                if results:
+                    out_fh.write("\n".join(results) + "\n")
                 record_buffer = []
                 current_genes.clear()
                 gene_orthologies.clear()
@@ -169,9 +199,6 @@ def vcf_annotator(args):
                     logger.warn("Gene ID '{}' not present in database".format(
                         gene))
                     gene_orthologies[gene] = None
-    process_buffer(record_buffer, gene_orthologies)
-
-
-#    default_args = [input, db, paralog_lookups=False, line_length=60,
-#                    all_homologs=False, output_alignments=None, quiet=False,
-#                    debug=False, silent=False]
+    results = process_buffer(record_buffer, gene_orthologies)
+    if results:
+        out_fh.write("\n".join(results) + "\n")
