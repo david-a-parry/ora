@@ -38,8 +38,13 @@ def process_buffer(record_buffer, gene_orthologies):
     results = []
     for rb in record_buffer:
         for i in range(len(rb.genes)):
+            positions = [int(x) for x in rb.positions[i].split('-')]
+            if len(positions) > 1:
+                start, stop = positions
+            else:
+                start, stop = positions[0], positions[0]
             source_features = uniprot_lookups.get_uniprot_features(
-                rb.proteins[i])
+                rb.proteins[i], start, stop)
             ref_aa, var_aa = rb.amino_acids[i].split('/')
             for f in source_features:
                 res = dict(query_gene=rb.genes[i],
@@ -68,7 +73,7 @@ def process_buffer(record_buffer, gene_orthologies):
                 t_protein = orthology['target']['protein_id']
                 s_seq = orthology['source']['align_seq']
                 t_seq = orthology['target']['align_seq']
-                p = get_align_pos(s_seq, rb.positions[i])
+                p = get_align_pos(s_seq, rb.positions[i])  # TODO handle ranges
                 o, aa = align_pos_to_amino_acid(t_seq, p) if p > 0 else (-1,
                                                                          '-')
                 if o < 1:
