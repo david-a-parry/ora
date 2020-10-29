@@ -135,6 +135,7 @@ def process_buffer(record_buffer, gene_orthologies):
                                homolog_aa=aa,
                                features=f)
                     results.append(res)
+            # TODO - paralogs!
     return ["\t".join([str(res[x.lower()]) for x in variant_fields +
                        result_header_fields] +
                       [str(res['features'][x]) for x in

@@ -75,7 +75,7 @@ def add_vcf_argparser(subparsers):
                         provided will default to STDOUT.''')
     parser.add_argument("--paralog_lookups", action='store_true',
                         help='''Also perform homology lookups on paralogs
-                        identified.''')
+                        identified. CURRENTLY UNIMPLEMENTED.''')
     parser.add_argument("-a", "--alignments", metavar='FILE',
                         help='''Output alignments of hits to this file.
                         CURRENTLY UNIMPLEMENTED.''')
