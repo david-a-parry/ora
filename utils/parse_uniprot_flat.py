@@ -4,6 +4,7 @@ import re
 import argparse
 import logging
 from Bio import SwissProt
+from Bio.SeqFeature import ExactPosition, UnknownPosition
 
 logger = logging.getLogger("UniprotParser")
 logger.setLevel(logging.INFO)
@@ -14,10 +15,13 @@ ch.setLevel(logger.level)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-iso_re = re.compile(r'IsoId=(\w+)(-\d+); Sequence=(.*?);')
+#iso_re = re.compile(r'IsoId=(\w+)(-\d+); Sequence=(.*?);')
+iso_re = re.compile(r'IsoId=(\w+)(-\d+),*?.*?;\s+Sequence=(.*?);')
 var_seq_re = re.compile(r'[A-Z]+ -> ([A-Z]+) ')
-feature_outputs = {'CROSSLNK', 'LIPID', 'MOD_RES', 'MUTAGEN', 'SITE',
-                   'VARIANT'}
+feature_outputs = {'ACT_SITE', 'BINDING', 'CARBOHYD', 'CROSSLNK', 'DISULFID',
+                   'LIPID', 'METAL', 'MOD_RES', 'MUTAGEN', 'NON_STD', 'REGION',
+                   'SITE', 'VARIANT'}
+MAX_REGION_SIZE = 5  # capture small misc. regions (e.g. docking, interaction)
 
 
 def parse_record(record, featfile, varfile, ensfile, seqfile=None):
@@ -59,31 +63,69 @@ def parse_record(record, featfile, varfile, ensfile, seqfile=None):
         else:
             isos = [display_isoform]
         for iso in isos:
-            variants = ",".join(iso_vars.get(iso, ''))
-            ensfile.write("\t".join((canonical,
+            variants = ','.join(iso_vars.get(iso, ''))
+            ensfile.write('\t'.join((canonical,
                                      ensg,
                                      enst,
                                      ensp,
                                      iso,
                                      str(int(iso == display_isoform)),
-                                     variants)) + "\n")
+                                     variants)) + '\n')
     for iso, seq in iso_seqs.items():
-        seqfile.write("\t".join((canonical,
+        seqfile.write('\t'.join((canonical,
                                  iso,
                                  str(int(iso == display_isoform)),
-                                 seq)) + "\n")
+                                 seq)) + '\n')
     for ft in (x for x in record.features if x.type in feature_outputs):
-        featfile.write("\t".join((canonical,
-                                  ft.type,
-                                  str(ft.location.start),
-                                  str(ft.location.end),
-                                  ft.qualifiers['note'])) + "\n")
+        if ft.type == 'DISULFID':
+            # only interested in start and stop amino acids
+            if isinstance(ft.location.start, ExactPosition):
+                featfile.write("\t".join((canonical,
+                                          ft.type,
+                                          str(ft.location.start),
+                                          str(ft.location.start + 1),
+                                          'Disulfide bond')) + '\n')
+            if isinstance(ft.location.end, ExactPosition):
+                featfile.write("\t".join((canonical,
+                                          ft.type,
+                                          str(ft.location.end - 1),
+                                          str(ft.location.end),
+                                          'Disulfide bond')) + '\n')
+        elif ft.type == 'ACT_SITE':
+            featfile.write('\t'.join((canonical,
+                                      ft.type,
+                                      str(ft.location.start),
+                                      str(ft.location.end),
+                                      'Active site')) + '\n')
+        elif ft.type == 'REGION':
+            if isinstance(ft.location.start, UnknownPosition) or \
+               isinstance(ft.location.end, UnknownPosition):
+                continue
+            elif ft.location.end - ft.location.start <= MAX_REGION_SIZE:
+                featfile.write('\t'.join((canonical,
+                                          ft.type,
+                                          str(ft.location.start),
+                                          str(ft.location.end),
+                                          ft.qualifiers['note'])) + '\n')
+        else:
+            try:
+                featfile.write('\t'.join((canonical,
+                                          ft.type,
+                                          str(ft.location.start),
+                                          str(ft.location.end),
+                                          ft.qualifiers['note'])) + '\n')
+            except KeyError:  # no note
+                featfile.write('\t'.join((canonical,
+                                          ft.type,
+                                          str(ft.location.start),
+                                          str(ft.location.end),
+                                          'N/A')) + '\n')
     for var_id, var in var_seqs.items():
-        varfile.write("\t".join((var_id,
+        varfile.write('\t'.join((var_id,
                                  str(var['start']),
                                  str(var['stop']),
                                  str(len(var['seq'])),
-                                 var['seq'])) + "\n")
+                                 var['seq'])) + '\n')
 
 
 def get_var_seqs(record):
