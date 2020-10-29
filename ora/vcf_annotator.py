@@ -168,10 +168,10 @@ def annotate_variants(args):
         out_fh = sys.stdout if args.output is None else open(args.output, 'wt')
         out_fh.write("\t".join(header_fields) + "\n")
         n = 0
-        progress_interval = 10_000
+        progress_interval = args.progress
         logger.info("Beginning VCF processing")
         for record in vcf:
-            if n % progress_interval == 0 and n != 0:
+            if progress_interval and n % progress_interval == 0 and n != 0:
                 logger.info("Processed {:,} VCF records".format(n))
             n += 1
             csqs = get_csqs(record)
