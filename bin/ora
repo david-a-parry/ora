@@ -61,8 +61,8 @@ def add_vcf_argparser(subparsers):
         help='''Search for othologous residue annotations for all missense and
         in-frame indels in a VCF.''',
         add_help=False)
-    from ora.vcf_annotator import vcf_annotator
-    parser.set_defaults(func=vcf_annotator)
+    from ora.vcf_annotator import annotate_variants
+    parser.set_defaults(func=annotate_variants)
     parser.add_argument("-i", "--input", required=True,
                         help='''VCF/BCF input to annotate. Must be annotated
                         by Ensembl VEP using Ensembl Gene IDs.''')

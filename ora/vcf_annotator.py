@@ -140,7 +140,7 @@ def process_buffer(record_buffer, gene_orthologies):
                       uniprot_lookups.feat_fields]) for res in results]
 
 
-def vcf_annotator(args):  # TODO rename this method something more apt
+def annotate_variants(args):
     if args.silent:
         logger.setLevel(logging.ERROR)
     elif args.quiet:
