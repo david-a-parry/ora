@@ -39,8 +39,6 @@ def process_buffer(record_buffer, gene_orthologies):
     results = []
     for rb in record_buffer:
         for i in range(len(rb.genes)):
-            if gene_orthologies[rb.genes[i]] is None:
-                continue
             positions = [int(x) for x in rb.positions[i].split('-')]
             if len(positions) > 1:
                 start, stop = positions
@@ -73,6 +71,8 @@ def process_buffer(record_buffer, gene_orthologies):
                                query_species='human',
                                features=f)
                     results.append(res)
+            if gene_orthologies[rb.genes[i]] is None:
+                continue
             for orthology in (x for x in
                               gene_orthologies[rb.genes[i]]['homologies'] if
                               x['source']['protein_id'] == rb.proteins[i]):
