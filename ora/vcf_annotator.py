@@ -83,12 +83,16 @@ def process_buffer(record_buffer, gene_orthologies):
                 s_seq = orthology['source']['align_seq']
                 t_seq = orthology['target']['align_seq']
                 s_start = get_align_pos(s_seq, start)
+                if s_start < 1:  # start is out of range of sequence
+                    continue
                 if start == stop:
                     s_stop = s_start
                     o_start, aa = align_pos_to_amino_acid(t_seq, s_start)
                     o_stop = o_start
                 else:
                     s_stop = get_align_pos(s_seq, stop)
+                    if s_stop < 1:  # out of range - treat as SNV
+                        s_stop = s_start
                     o_start, o_stop, aa = align_range_to_amino_acid(t_seq,
                                                                     s_start,
                                                                     s_stop)
