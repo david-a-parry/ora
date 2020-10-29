@@ -167,10 +167,10 @@ def vcf_annotator(args):  # TODO rename this method something more apt
         progress_interval = 10_000
         logger.info("Beginning VCF processing")
         for record in vcf:
-            csqs = get_csqs(record)
+            if n % progress_interval == 0 and n != 0:
+                logger.info("Processed {:,} VCF records".format(n))
             n += 1
-            if n % progress_interval == 0:
-                logger.info("Read {:,} VCF records".format(n))
+            csqs = get_csqs(record)
             if not csqs and not record_buffer:
                 continue
             these_genes = [x['Gene'] for x in csqs]
@@ -202,3 +202,4 @@ def vcf_annotator(args):  # TODO rename this method something more apt
     results = process_buffer(record_buffer, gene_orthologies)
     if results:
         out_fh.write("\n".join(results) + "\n")
+    logger.info("Finished. Processed {:,} VCF records".format(n))
