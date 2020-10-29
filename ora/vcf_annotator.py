@@ -172,7 +172,8 @@ def annotate_variants(args):
         logger.info("Beginning VCF processing")
         for record in vcf:
             if progress_interval and n % progress_interval == 0 and n != 0:
-                logger.info("Processed {:,} VCF records".format(n))
+                logger.info("Processed {:,} VCF records. At {}:{}".format(
+                    n, record.chrom, record.pos))
             n += 1
             csqs = get_csqs(record)
             if not csqs and not record_buffer:
