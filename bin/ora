@@ -29,11 +29,11 @@ def add_gene_argparser(subparsers):
     parser.add_argument("--paralog_lookups", action='store_true',
                         help='''Also perform homology lookups on paralogs
                         identified.''')
+    parser.add_argument("-a", "--alignments", help='''Output alignments with
+                        hits to this file.''')
     parser.add_argument("--all_homologs", action='store_true',
                         help='''Output alignment information for all homologs
                         even if no features are found.''')
-    parser.add_argument("--output_alignments", help='''Output alignments of
-                        with hits to this file.''')
     parser.add_argument("--line_length", type=int, default=60,
                         help='''Length of sequence lines in alignment output.
                         Default=60.''')
@@ -75,14 +75,14 @@ def add_vcf_argparser(subparsers):
     parser.add_argument("--paralog_lookups", action='store_true',
                         help='''Also perform homology lookups on paralogs
                         identified.''')
-    parser.add_argument("--all_homologs", action='store_true',
-                        help='''Output alignment information for all homologs
-                        even if no features are found.''')
-    parser.add_argument("--output_alignments", help='''Output alignments of
-                        with hits to this file.''')
+    parser.add_argument("-a", "--alignments", help='''Output alignments of
+                        hits to this file. CURRENTLY UNIMPLEMENTED.''')
     parser.add_argument("--line_length", type=int, default=60,
                         help='''Length of sequence lines in alignment output.
                         Default=60.''')
+    parser.add_argument("--progress", type=int, metavar='N', default=10_000,
+                        help='''Report progress every N variants. Default is
+                        10_000. Set to 0 to turn off progress reporting.''')
     parser.add_argument("--debug", action='store_true',
                         help='Add debugging messages to output.')
     parser.add_argument("--quiet", action='store_true',
@@ -102,7 +102,7 @@ def gene_lookup(args):
                        line_length=args.line_length, timeout=args.timeout,
                        max_retries=args.max_retries,
                        all_homologs=args.all_homologs,
-                       output_alignments=args.output_alignments,
+                       output_alignments=args.alignments,
                        quiet=args.quiet, debug=args.debug, silent=args.silent)
     else:
         from ora.local import local_lookups
@@ -110,7 +110,7 @@ def gene_lookup(args):
                       paralog_lookups=args.paralog_lookups,
                       line_length=args.line_length,
                       all_homologs=args.all_homologs,
-                      output_alignments=args.output_alignments,
+                      output_alignments=args.alignments,
                       quiet=args.quiet, debug=args.debug, silent=args.silent)
 
 
