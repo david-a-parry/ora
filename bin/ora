@@ -63,21 +63,23 @@ def add_vcf_argparser(subparsers):
         add_help=False)
     from ora.vcf_annotator import annotate_variants
     parser.set_defaults(func=annotate_variants)
-    parser.add_argument("-i", "--input", required=True,
+    parser.add_argument("-i", "--input", required=True, metavar='VCF',
                         help='''VCF/BCF input to annotate. Must be annotated
                         by Ensembl VEP using Ensembl Gene IDs.''')
     parser.add_argument("-d", "--db", required=True,
                         help='''Local sqlite3 database to use for look-ups.
                         Required.''')
-    parser.add_argument("-o", "--output",
-                        help='''Output file. If not provided will default to
-                        STDOUT.''')
+    parser.add_argument("-o", "--output", metavar='FILE',
+                        help='''Output file. If the filename ends with '.gz'
+                        the output will be compressed with gzip. If not
+                        provided will default to STDOUT.''')
     parser.add_argument("--paralog_lookups", action='store_true',
                         help='''Also perform homology lookups on paralogs
                         identified.''')
-    parser.add_argument("-a", "--alignments", help='''Output alignments of
-                        hits to this file. CURRENTLY UNIMPLEMENTED.''')
-    parser.add_argument("--line_length", type=int, default=60,
+    parser.add_argument("-a", "--alignments", metavar='FILE',
+                        help='''Output alignments of hits to this file.
+                        CURRENTLY UNIMPLEMENTED.''')
+    parser.add_argument("--line_length", type=int, default=60, metavar='N',
                         help='''Length of sequence lines in alignment output.
                         Default=60.''')
     parser.add_argument("--progress", type=int, metavar='N', default=10_000,

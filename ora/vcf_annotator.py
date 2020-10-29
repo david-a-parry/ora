@@ -1,3 +1,4 @@
+import gzip
 import logging
 import sqlite3
 import sys
@@ -165,7 +166,12 @@ def annotate_variants(args):
         curr = conn.cursor()
         logger.info("Reading UniProt feature data")
         uniprot_lookups.initialize()
-        out_fh = sys.stdout if args.output is None else open(args.output, 'wt')
+        if args.output is None:
+            out_fh = sys.stdout
+        elif args.output.endswith('.gz'):
+            out_fh = gzip.open(args.output, 'wt')
+        else:
+            out_fh = open(args.output, 'wt')
         out_fh.write("\t".join(header_fields) + "\n")
         n = 0
         progress_interval = args.progress
@@ -207,4 +213,5 @@ def annotate_variants(args):
     results = process_buffer(record_buffer, gene_orthologies)
     if results:
         out_fh.write("\n".join(results) + "\n")
+    out_fh.close()
     logger.info("Finished. Processed {:,} VCF records".format(n))
