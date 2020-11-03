@@ -77,8 +77,9 @@ def add_vcf_argparser(subparsers):
                         help='''Also perform homology lookups on paralogs
                         identified. CURRENTLY UNIMPLEMENTED.''')
     parser.add_argument("-a", "--alignments", metavar='FILE',
-                        help='''Output alignments of hits to this file.
-                        CURRENTLY UNIMPLEMENTED.''')
+                        help='''Output alignments of hits to this file. If the
+                        filename ends with '.gz' the output will be compressed
+                        with gzip.''')
     parser.add_argument("--line_length", type=int, default=60, metavar='N',
                         help='''Length of sequence lines in alignment output.
                         Default=60.''')

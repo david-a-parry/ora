@@ -5,7 +5,7 @@ import sys
 from collections import namedtuple
 from ora import uniprot_lookups
 from ora.alignments import align_pos_to_amino_acid, align_range_to_amino_acid
-from ora.alignments import get_align_pos
+from ora.alignments import get_align_pos, write_alignments
 from ora.local import ensg_lookup, get_homologies
 from ora.homology_parser import header_fields as result_header_fields
 from vase.vcf_reader import VcfReader
@@ -14,7 +14,9 @@ logger = logging.getLogger("ORA")
 logger.setLevel(logging.INFO)
 ReadBuffer = namedtuple('ReadBuffer',
                         'record genes symbols proteins positions amino_acids')
-variant_fields = ['chromosome', 'position', 'id', 'ref', 'alt']
+variant_fields = ['Chromosome', 'Position', 'ID', 'Ref', 'Alt', 'Ref_AA',
+                  'Alt_AA']
+result_header_fields = [x for x in result_header_fields if x != 'Query_AA']
 header_fields = (variant_fields + result_header_fields +
                  uniprot_lookups.feat_fields)
 
@@ -36,6 +38,63 @@ def get_csqs(record, csq_types=['missense_variant', 'inframe_deletion',
             if y in csq_types]
 
 
+def parse_amino_acids(aa, start, stop):
+    '''
+        SNV - unchanged
+        'K', 'E', 100, 100 => 'K', 'E', 100, 100
+
+        DELETION
+        'KD', 'K', 100, 101 => 'D', '-', 101, 101
+
+        DELETION
+        'KDL', 'K', 100, 102 => 'DL', '-', 101, 102
+
+        INSERTION
+        'K', 'KQ', 100, 100 => 'K', 'Q', 100, 101
+
+        INSERTION
+        'K', 'KQR', 100, 100 => '-', 'QR', 100, 101
+
+        INSERTION
+        'KQQ', 'KQQQR', 100, 100 => '-', 'QR', 102, 103
+
+    '''
+    ref, var = aa.split('/')
+    if len(ref) > len(var):
+        while len(var) > 0:
+            if ref[0] == var[0]:
+                ref = ref[1:]
+                var = var[1:]
+                start += 1
+            else:
+                break
+        if var == '':
+            var = '-'
+        if start == stop:
+            description = "{}del{}".format(start, ref)
+        else:
+            description = "{}_{}del{}".format(start, stop, ref)
+    elif len(ref) < len(var):
+        original_ref = ref
+        start_adjust = -1
+        while len(ref) > 0:
+            if ref[0] == var[0]:
+                ref = ref[1:]
+                var = var[1:]
+                start_adjust += 1
+            else:
+                break
+        if ref == '':
+            ref = '-'
+        if start_adjust > 0:
+            start == start_adjust
+        stop = start + 1
+        description = "{}{}_{}ins{}".format(original_ref, start, stop, var)
+    else:
+        description = "{}{}{}".format(ref, start, var)
+    return ref, var, start, stop, description
+
+
 def process_buffer(record_buffer, gene_orthologies):
     results = []
     for rb in record_buffer:
@@ -45,7 +104,10 @@ def process_buffer(record_buffer, gene_orthologies):
                 start, stop = positions
             else:
                 start, stop = positions[0], positions[0]
-            ref_aa, var_aa = rb.amino_acids[i].split('/')
+            ref_aa, var_aa, start, stop, description = parse_amino_acids(
+                                                            rb.amino_acids[i],
+                                                            start,
+                                                            stop)
             source_features = uniprot_lookups.get_uniprot_features(
                 rb.proteins[i], start, stop)
             if source_features is not None:
@@ -60,6 +122,8 @@ def process_buffer(record_buffer, gene_orthologies):
                                query_protein=rb.proteins[i],
                                query_pos=rb.positions[i],
                                query_aa=ref_aa,
+                               ref_aa=ref_aa,
+                               alt_aa=var_aa,
                                homolog_gene=rb.genes[i],
                                homolog_symbol=rb.symbols[i],
                                homolog_protein=rb.proteins[i],
@@ -119,6 +183,8 @@ def process_buffer(record_buffer, gene_orthologies):
                                query_symbol=orthology['source'].get('symbol'),
                                query_pos=rb.positions[i],
                                query_aa=s_seq[s_start:s_stop + 1],
+                               ref_aa=s_seq[s_start:s_stop + 1],
+                               alt_aa=var_aa,
                                homolog_gene=t_id,
                                homolog_protein=t_protein,
                                homolog_symbol=orthology['target'].get(
@@ -133,13 +199,22 @@ def process_buffer(record_buffer, gene_orthologies):
                                homolog_seq=t_seq,
                                query_species=orthology['source']['species'],
                                homolog_aa=aa,
+                               variant_description=description,
+                               variant_start=start,
+                               variant_stop=stop,
+                               variant_aa=ref_aa,
                                features=f)
                     results.append(res)
             # TODO - paralogs!
-    return ["\t".join([str(res[x.lower()]) for x in variant_fields +
-                       result_header_fields] +
-                      [str(res['features'][x]) for x in
-                      uniprot_lookups.feat_fields]) for res in results]
+    return results
+
+
+def write_results_table(results, fh):
+    fh.write("\n".join(["\t".join([str(res[x.lower()]) for x in variant_fields +
+                                   result_header_fields] +
+                                  [str(res['features'][x]) for x in
+                                   uniprot_lookups.feat_fields]) for res in
+                        results]))
 
 
 def annotate_variants(args):
@@ -173,6 +248,11 @@ def annotate_variants(args):
             out_fh = gzip.open(args.output, 'wt')
         else:
             out_fh = open(args.output, 'wt')
+        aln_fh = None
+        if args.alignments is not None:
+            aln_fh = gzip.open(args.alignments, 'wt') \
+                if args.alignments.endswith('.gz') \
+                    else open(args.alignments, 'wt')
         out_fh.write("\t".join(header_fields) + "\n")
         n = 0
         progress_interval = args.progress
@@ -189,7 +269,9 @@ def annotate_variants(args):
             if current_genes.isdisjoint(set(these_genes)):
                 results = process_buffer(record_buffer, gene_orthologies)
                 if results:
-                    out_fh.write("\n".join(results) + "\n")
+                    write_results_table(results, out_fh)
+                    if aln_fh is not None:
+                        write_alignments(results, aln_fh)
                 record_buffer = []
                 current_genes.clear()
                 gene_orthologies.clear()
@@ -213,6 +295,8 @@ def annotate_variants(args):
                     gene_orthologies[gene] = None
     results = process_buffer(record_buffer, gene_orthologies)
     if results:
-        out_fh.write("\n".join(results) + "\n")
+        write_results_table(results, out_fh)
+        if aln_fh is not None:
+            write_alignments(results, aln_fh)
     out_fh.close()
     logger.info("Finished. Processed {:,} VCF records".format(n))

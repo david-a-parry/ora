@@ -65,18 +65,26 @@ def align_range_to_amino_acid(seq, start, stop):
 def seq_and_pos_from_results(results):
     pairs = dict()
     for res in (x for x in results if 'query_seq' in x):
-        align_pos = get_align_pos(res['query_seq'], res['query_pos'])
         k = (res['query_gene'], res['homolog_gene'])
         if k not in pairs:
             pairs[k] = dict(align_positions=list(), query_positions=list(),
-                            query_aas=list())
+                            query_aas=list(), variant_description=list())
             for x in ('query_species', 'species', 'query_protein', 'query_seq',
                       'homolog_protein', 'homolog_seq', 'query_symbol',
                       'homolog_symbol'):
                 pairs[k][x] = res[x]
-        pairs[k]['align_positions'].append(align_pos)
-        pairs[k]['query_positions'].append(res['query_pos'])
-        pairs[k]['query_aas'].append(res['query_aa'])
+        if 'variant_description' in res:
+            pairs[k]['variant_description'].append(res['variant_description'])
+            for pos in set([res['variant_start'], res['variant_stop']]):
+                align_pos = get_align_pos(res['query_seq'], pos)
+                pairs[k]['align_positions'].append(align_pos)
+                pairs[k]['query_positions'].append(pos)
+                pairs[k]['query_aas'].append(res['query_seq'][align_pos])
+        else:
+            align_pos = get_align_pos(res['query_seq'], res['query_pos'])
+            pairs[k]['align_positions'].append(align_pos)
+            pairs[k]['query_positions'].append(res['query_pos'])
+            pairs[k]['query_aas'].append(res['query_aa'])
     return pairs
 
 
@@ -145,9 +153,12 @@ def write_alignments(results, fh, gene2symbol=None, linelen=60):
         header = "|{} {} vs {} {} position ".format(
             qsymbol, res['query_species'], hsymbol, res['species']) + \
             ",".join(str(x) for x in sorted(set(res['query_positions']))) + "|"
+
         lmargin = max(len(res['query_protein']), len(res['homolog_protein']))
         fh.write('-' * len(header) + "\n")
         fh.write(header + "\n")
+        for desc in sorted(set(res['variant_description'])):
+            fh.write('|{:<{fill}}|\n'.format(desc, fill=len(header) - 2))
         fh.write('-' * len(header) + "\n")
         qlen = len(res['query_seq'])
         for i in range(0, qlen, linelen):
