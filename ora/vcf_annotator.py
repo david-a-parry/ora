@@ -1,7 +1,9 @@
 import gzip
 import logging
+import re
 import sqlite3
 import sys
+from Bio.Data.IUPACData import protein_letters_3to1
 from collections import namedtuple
 from ora import uniprot_lookups
 from ora.alignments import align_pos_to_amino_acid, align_range_to_amino_acid
@@ -12,13 +14,24 @@ from vase.vcf_reader import VcfReader
 
 logger = logging.getLogger("ORA")
 logger.setLevel(logging.INFO)
-ReadBuffer = namedtuple('ReadBuffer',
-                        'record genes symbols proteins positions amino_acids')
+ReadBuffer = namedtuple('ReadBuffer', 'record genes csqs')
 variant_fields = ['Chromosome', 'Position', 'ID', 'Ref', 'Alt', 'Ref_AA',
                   'Alt_AA']
 result_header_fields = [x for x in result_header_fields if x != 'Query_AA']
 header_fields = (variant_fields + result_header_fields +
                  uniprot_lookups.feat_fields)
+
+snv_re = re.compile(r'''p.([A-z]{3})  # first amino acid
+                        (\d+)         # position
+                        ([A-z]{3})$   # AA if SNV, "del" or "dup" if 1 AA indel
+                    ''', re.X)
+indel_re = re.compile(r'''p.([A-z]{3})           # first amino acid
+                            (\d+)           # start position
+                            _([A-z]{3})          # end amino acid
+                            (\d+)           # end position
+                            (ins|del|dup)   # indel type
+                            (\w+)?$         # optional amino acids
+                        ''', re.X)
 
 
 def get_orthologies(gene, cursor, paralog_lookups=False):
@@ -38,7 +51,7 @@ def get_csqs(record, csq_types=['missense_variant', 'inframe_deletion',
             if y in csq_types]
 
 
-def parse_amino_acids(aa, start, stop):
+def parse_amino_acids(csq):
     '''
         SNV - unchanged
         'K', 'E', 100, 100 => 'K', 'E', 100, 100
@@ -59,7 +72,13 @@ def parse_amino_acids(aa, start, stop):
         'KQQ', 'KQQQR', 100, 100 => '-', 'QR', 102, 103
 
     '''
-    ref, var = aa.split('/')
+    ref, var = csq['Amino_acids'].split('/')
+    positions = csq['Protein_position'].split('-')
+    start = int(positions[0])
+    if len(positions) == 1:
+        stop = start
+    else:
+        stop = int(positions[1])
     if len(ref) > len(var):
         while len(var) > 0:
             if ref[0] == var[0]:
@@ -95,21 +114,61 @@ def parse_amino_acids(aa, start, stop):
     return ref, var, start, stop, description
 
 
+def parse_hgvsp(hgvsp):
+    protein, hgvs = hgvsp.split(':')
+    ensp, version = protein.split('.')
+    match = indel_re.match(hgvs)
+    if match:
+        ref, start, var, stop, indel, insertion = match.groups()
+        return (ensp,
+                protein_letters_3to1[ref],
+                protein_letters_3to1[var],
+                int(start),
+                int(stop))
+    match = snv_re.match(hgvs)
+    if match:  # either SNV or single AA deletion or single AA duplication
+        ref, start, var = match.groups()
+        start = int(start)
+        ref = protein_letters_3to1[ref]
+        if var == 'del':
+            var = '-'
+            stop = start
+        elif var == 'dup':
+            var = ref + ref
+            stop = start + 1
+        else:
+            var = protein_letters_3to1[var]
+            stop = start
+        return (ensp, ref, var, start, stop)
+    raise ValueError("Could not parse HGVSp annotation '{}'".format(hgvsp))
+
+
+def parse_csq(csq):
+    if csq['HGVSp']:
+        hkeys = ['protein', 'ref_aa', 'var_aa', 'start', 'stop']
+        result = dict((k, v) for k, v in zip(hkeys, parse_hgvsp(csq['HGVSp'])))
+        result['description'] = csq['HGVSp']
+    else:
+        akeys = ['ref_aa', 'var_aa', 'start', 'stop', 'description']
+        result = dict((k, v) for k, v in zip(akeys, parse_amino_acids(csq)))
+        result['protein'] = csq['ENSP']
+    result['symbol'] = csq['SYMBOL']
+    return result
+
+
 def process_buffer(record_buffer, gene_orthologies):
     results = []
     for rb in record_buffer:
         for i in range(len(rb.genes)):
-            positions = [int(x) for x in rb.positions[i].split('-')]
-            if len(positions) > 1:
-                start, stop = positions
+            csq = parse_csq(rb.csqs[i])
+            if csq['start'] == csq['stop']:
+                pos = csq['start']
             else:
-                start, stop = positions[0], positions[0]
-            ref_aa, var_aa, start, stop, description = parse_amino_acids(
-                                                            rb.amino_acids[i],
-                                                            start,
-                                                            stop)
+                pos = "{}-{}".format(csq['start'], csq['stop'])
             source_features = uniprot_lookups.get_uniprot_features(
-                rb.proteins[i], start, stop)
+                csq['protein'],
+                csq['start'],
+                csq['stop'])
             if source_features is not None:
                 for f in source_features:
                     res = dict(chromosome=rb.record.chrom,
@@ -118,21 +177,21 @@ def process_buffer(record_buffer, gene_orthologies):
                                ref=rb.record.ref,
                                alt=rb.record.alt,
                                query_gene=rb.genes[i],
-                               query_symbol=rb.symbols[i],
-                               query_protein=rb.proteins[i],
-                               query_pos=rb.positions[i],
-                               query_aa=ref_aa,
-                               ref_aa=ref_aa,
-                               alt_aa=var_aa,
+                               query_symbol=csq['symbol'],
+                               query_protein=csq['protein'],
+                               query_pos=pos,
+                               query_aa=csq['ref_aa'],
+                               ref_aa=csq['ref_aa'],
+                               alt_aa=csq['var_aa'],
                                homolog_gene=rb.genes[i],
-                               homolog_symbol=rb.symbols[i],
-                               homolog_protein=rb.proteins[i],
+                               homolog_symbol=csq['symbol'],
+                               homolog_protein=csq['protein'],
                                orthology_type="self",
                                species='human',
                                percent_id=100,
                                percent_pos=100,
-                               homolog_pos=rb.positions[i],
-                               homolog_aa=ref_aa,
+                               homolog_pos=pos,
+                               homolog_aa=csq['ref_aa'],
                                query_species='human',
                                features=f)
                     results.append(res)
@@ -140,22 +199,22 @@ def process_buffer(record_buffer, gene_orthologies):
                 continue
             for orthology in (x for x in
                               gene_orthologies[rb.genes[i]]['homologies'] if
-                              x['source']['protein_id'] == rb.proteins[i]):
+                              x['source']['protein_id'] == csq['protein']):
                 s_id = orthology['source']['id']
                 t_id = orthology['target']['id']
                 s_protein = orthology['source']['protein_id']
                 t_protein = orthology['target']['protein_id']
                 s_seq = orthology['source']['align_seq']
                 t_seq = orthology['target']['align_seq']
-                s_start = get_align_pos(s_seq, start)
+                s_start = get_align_pos(s_seq, csq['start'])
                 if s_start < 1:  # start is out of range of sequence
                     continue
-                if start == stop:
+                if csq['start'] == csq['stop']:
                     s_stop = s_start
                     o_start, aa = align_pos_to_amino_acid(t_seq, s_start)
                     o_stop = o_start
                 else:
-                    s_stop = get_align_pos(s_seq, stop)
+                    s_stop = get_align_pos(s_seq, csq['stop'])
                     if s_stop < 1:  # out of range - treat as SNV
                         s_stop = s_start
                     o_start, o_stop, aa = align_range_to_amino_acid(t_seq,
@@ -181,10 +240,10 @@ def process_buffer(record_buffer, gene_orthologies):
                                query_gene=s_id,
                                query_protein=s_protein,
                                query_symbol=orthology['source'].get('symbol'),
-                               query_pos=rb.positions[i],
+                               query_pos=pos,
                                query_aa=s_seq[s_start:s_stop + 1],
                                ref_aa=s_seq[s_start:s_stop + 1],
-                               alt_aa=var_aa,
+                               alt_aa=csq['var_aa'],
                                homolog_gene=t_id,
                                homolog_protein=t_protein,
                                homolog_symbol=orthology['target'].get(
@@ -199,10 +258,10 @@ def process_buffer(record_buffer, gene_orthologies):
                                homolog_seq=t_seq,
                                query_species=orthology['source']['species'],
                                homolog_aa=aa,
-                               variant_description=description,
-                               variant_start=start,
-                               variant_stop=stop,
-                               variant_aa=ref_aa,
+                               variant_description=csq['description'],
+                               variant_start=csq['start'],
+                               variant_stop=csq['stop'],
+                               variant_aa=csq['ref_aa'],
                                features=f)
                     results.append(res)
             # TODO - paralogs!
@@ -252,7 +311,7 @@ def annotate_variants(args):
         if args.alignments is not None:
             aln_fh = gzip.open(args.alignments, 'wt') \
                 if args.alignments.endswith('.gz') \
-                    else open(args.alignments, 'wt')
+                else open(args.alignments, 'wt')
         out_fh.write("\t".join(header_fields) + "\n")
         n = 0
         progress_interval = args.progress
@@ -263,36 +322,30 @@ def annotate_variants(args):
                     n, record.chrom, record.pos))
             n += 1
             csqs = get_csqs(record)
-            if not csqs and not record_buffer:
-                continue
-            these_genes = [x['Gene'] for x in csqs]
-            if current_genes.isdisjoint(set(these_genes)):
-                results = process_buffer(record_buffer, gene_orthologies)
-                if results:
-                    write_results_table(results, out_fh)
-                    if aln_fh is not None:
-                        write_alignments(results, aln_fh)
-                record_buffer = []
-                current_genes.clear()
-                gene_orthologies.clear()
-            record_buffer.append(ReadBuffer(record=record,
-                                            genes=these_genes,
-                                            symbols=[x['SYMBOL'] for x in
-                                                     csqs],
-                                            proteins=[x['ENSP'] for x in csqs],
-                                            positions=[x['Protein_position']
-                                                       for x in csqs],
-                                            amino_acids=[x['Amino_acids'] for x
-                                                         in csqs]))
-            current_genes.update(these_genes)
-            for gene in (x for x in these_genes if x not in gene_orthologies):
-                try:
-                    gene_orthologies[gene] = get_orthologies(
-                        gene, curr, args.paralog_lookups)
-                except LookupError:
-                    logger.warn("Gene ID '{}' not present in database".format(
-                        gene))
-                    gene_orthologies[gene] = None
+            if csqs:
+                these_genes = [x['Gene'] for x in csqs]
+                if current_genes.isdisjoint(set(these_genes)):
+                    results = process_buffer(record_buffer, gene_orthologies)
+                    if results:
+                        write_results_table(results, out_fh)
+                        if aln_fh is not None:
+                            write_alignments(results, aln_fh)
+                    record_buffer = []
+                    current_genes.clear()
+                    gene_orthologies.clear()
+                record_buffer.append(ReadBuffer(record=record,
+                                                genes=these_genes,
+                                                csqs=csqs))
+                current_genes.update(these_genes)
+                for gene in (x for x in these_genes if x not in
+                             gene_orthologies):
+                    try:
+                        gene_orthologies[gene] = get_orthologies(
+                            gene, curr, args.paralog_lookups)
+                    except LookupError:
+                        logger.warn("Gene ID '{}' not present in database"
+                                    .format(gene))
+                        gene_orthologies[gene] = None
     results = process_buffer(record_buffer, gene_orthologies)
     if results:
         write_results_table(results, out_fh)
