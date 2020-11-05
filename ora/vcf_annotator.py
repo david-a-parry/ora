@@ -299,7 +299,6 @@ def annotate_variants(args):
         logger.info("Connecting to local database '{}'".format(args.db))
         conn = sqlite3.connect(args.db)
         curr = conn.cursor()
-        logger.info("Reading UniProt feature data")
         uniprot_lookups.initialize()
         if args.output is None:
             out_fh = sys.stdout

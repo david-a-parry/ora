@@ -29,6 +29,7 @@ initialized = False
 
 
 def initialize():
+    logger.info("Loading UniProt data")
     _features_from_uniprot()
     _uniprot_from_ensp()
     _read_uniprot_variants()
