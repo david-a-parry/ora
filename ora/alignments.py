@@ -122,7 +122,13 @@ def arrange_labels(label_tups, line_length, l_margin):
         for j in range(i + 1, len(labels)):
             if labels[j] in written:
                 continue
-            if positions[i] <= positions[j] <= span_i:
+            overlaps_previous = False
+            for k in range(0, j):
+                span_k = positions[k] + len(labels[k]) - 1
+                if positions[k] <= positions[j] <= span_k:
+                    overlaps_previous = True
+                    break
+            if overlaps_previous:
                 continue
             span_j = positions[j] + len(labels[j]) - 1
             s = s[:positions[j]] + labels[j] + s[span_j:]
