@@ -40,8 +40,9 @@ def get_orthologies(gene, cursor, paralog_lookups=False):
     paralogs = dict()
     if paralog_lookups:
         for paralogy in (x for x in homology_data if 'paralog' in x['type']):
-            p_lookup = ensg_lookup(paralogy['id'], cursor)
-            paralogs[paralogy['id']] = get_homologies(p_lookup, cursor)
+            p_lookup = ensg_lookup(paralogy['target']['id'], cursor)
+            paralogs[paralogy['target']['id']] = get_homologies(p_lookup,
+                                                                cursor)
     return dict(homologies=homology_data, paralogs=paralogs)
 
 
@@ -156,6 +157,129 @@ def parse_csq(csq):
     return result
 
 
+def features_from_homology(homology, record, start, stop, pos, csq,
+                           paralogs=None, skip_paralogs=False):
+    if skip_paralogs and 'paralog' in homology['type']:
+        return []
+    results = []
+    s_id = homology['source']['id']
+    t_id = homology['target']['id']
+    s_protein = homology['source']['protein_id']
+    t_protein = homology['target']['protein_id']
+    s_seq = homology['source']['align_seq']
+    t_seq = homology['target']['align_seq']
+    s_symbol = homology['source'].get('symbol')
+    t_symbol = homology['target'].get('symbol')
+    align_start = get_align_pos(s_seq, start)
+    if align_start < 1:  # start is out of range of sequence
+        return []
+    if start == stop:
+        align_stop = align_start
+        o_start, aa = align_pos_to_amino_acid(t_seq, align_start)
+        o_stop = o_start
+    else:
+        align_stop = get_align_pos(s_seq, stop)
+        if align_stop < 1:  # out of range - treat as SNV
+            align_stop = align_start
+        o_start, o_stop, aa = align_range_to_amino_acid(t_seq,
+                                                        align_start,
+                                                        align_stop)
+    if o_start < 1 and o_stop < 1:
+        return []
+    elif o_stop < 1:  # only start position found, treat as SNV
+        o_stop = o_start
+    elif o_start < 1:  # only stop position found, treat as SNV
+        o_start = o_stop
+    ufeats = uniprot_lookups.get_uniprot_features(t_protein,
+                                                  o_start,
+                                                  o_stop)
+    if paralogs and 'paralog' in homology['type']:
+        logger.debug("Checking paralog for {}/{} for {}/{}".format(
+            homology['target']['id'],
+            homology['target']['protein_id'],
+            homology['source']['id'],
+            homology['source']['protein_id']))
+        p_pos = o_start if o_start == o_stop else "{}-{}".format(o_start,
+                                                                 o_stop)
+        for paralogy in (x for x in paralogs if x['source']['protein_id'] ==
+                         t_protein):
+            paralog_results = features_from_homology(homology=paralogy,
+                                                     record=record,
+                                                     start=o_start,
+                                                     stop=o_stop,
+                                                     pos=p_pos,
+                                                     csq=csq,
+                                                     skip_paralogs=True)
+            for para in paralog_results:
+                para['query_symbol'] += ' ({} paralog)'.format(s_symbol)
+                para['query_gene'] += ' ({} paralog)'.format(s_id)
+            results.extend(paralog_results)
+    if results and not ufeats:  # results from paralog lookups only
+        # create dummy result for this orthology in order to output alignment
+        # of paralog with original protein
+        para_res = dict(query_gene=s_id,
+                        query_protein=s_protein,
+                        query_symbol=s_symbol,
+                        query_pos=pos,
+                        query_aa=s_seq[align_start:align_stop + 1],
+                        ref_aa=s_seq[align_start:align_stop + 1],
+                        alt_aa=csq['var_aa'],
+                        homolog_gene=t_id,
+                        homolog_protein=t_protein,
+                        homolog_symbol=t_symbol,
+                        orthology_type=homology['type'],
+                        species=homology['target']['species'],
+                        percent_id=homology['target']['perc_id'],
+                        percent_pos=homology['target']['perc_pos'],
+                        homolog_pos=o_start if o_start == o_stop
+                        else "{}-{}".format(o_start, o_stop),
+                        query_seq=s_seq,
+                        homolog_seq=t_seq,
+                        query_species=homology['source']['species'],
+                        homolog_aa=aa,
+                        variant_description=csq['description'],
+                        variant_start=start,
+                        variant_stop=stop,
+                        features=None,
+                        should_output=False)
+        results.append(para_res)
+    if ufeats is None:
+        return results
+    for f in ufeats:
+        res = dict(chromosome=record.chrom,
+                   position=record.pos,
+                   id=record.id,
+                   ref=record.ref,
+                   alt=record.alt,
+                   query_gene=s_id,
+                   query_protein=s_protein,
+                   query_symbol=s_symbol,
+                   query_pos=pos,
+                   query_aa=s_seq[align_start:align_stop + 1],
+                   ref_aa=s_seq[align_start:align_stop + 1],
+                   alt_aa=csq['var_aa'],
+                   homolog_gene=t_id,
+                   homolog_protein=t_protein,
+                   homolog_symbol=t_symbol,
+                   orthology_type=homology['type'],
+                   species=homology['target']['species'],
+                   percent_id=homology['target']['perc_id'],
+                   percent_pos=homology['target']['perc_pos'],
+                   homolog_pos=o_start if o_start == o_stop
+                   else "{}-{}".format(o_start, o_stop),
+                   query_seq=s_seq,
+                   homolog_seq=t_seq,
+                   query_species=homology['source']['species'],
+                   homolog_aa=aa,
+                   variant_description=csq['description'],
+                   variant_start=start,
+                   variant_stop=stop,
+                   features=f,
+                   should_output=True)
+        results.append(res)
+    return results
+
+
 def process_buffer(record_buffer, gene_orthologies):
     results = []
     for rb in record_buffer:
@@ -193,87 +317,33 @@ def process_buffer(record_buffer, gene_orthologies):
                                homolog_pos=pos,
                                homolog_aa=csq['ref_aa'],
                                query_species='human',
-                               features=f)
+                               features=f,
+                               should_output=True)
                     results.append(res)
             if gene_orthologies[rb.genes[i]] is None:
                 continue
             for orthology in (x for x in
                               gene_orthologies[rb.genes[i]]['homologies'] if
                               x['source']['protein_id'] == csq['protein']):
-                s_id = orthology['source']['id']
-                t_id = orthology['target']['id']
-                s_protein = orthology['source']['protein_id']
-                t_protein = orthology['target']['protein_id']
-                s_seq = orthology['source']['align_seq']
-                t_seq = orthology['target']['align_seq']
-                s_start = get_align_pos(s_seq, csq['start'])
-                if s_start < 1:  # start is out of range of sequence
-                    continue
-                if csq['start'] == csq['stop']:
-                    s_stop = s_start
-                    o_start, aa = align_pos_to_amino_acid(t_seq, s_start)
-                    o_stop = o_start
-                else:
-                    s_stop = get_align_pos(s_seq, csq['stop'])
-                    if s_stop < 1:  # out of range - treat as SNV
-                        s_stop = s_start
-                    o_start, o_stop, aa = align_range_to_amino_acid(t_seq,
-                                                                    s_start,
-                                                                    s_stop)
-                if o_start < 1 and o_stop < 1:
-                    continue
-                elif o_stop < 1:  # only start position found, treat as SNV
-                    o_stop = o_start
-                elif o_start < 1:  # only stop position found, treat as SNV
-                    o_start = o_stop
-                ufeats = uniprot_lookups.get_uniprot_features(t_protein,
-                                                              o_start,
-                                                              o_stop)
-                if ufeats is None:
-                    continue
-                for f in ufeats:
-                    res = dict(chromosome=rb.record.chrom,
-                               position=rb.record.pos,
-                               id=rb.record.id,
-                               ref=rb.record.ref,
-                               alt=rb.record.alt,
-                               query_gene=s_id,
-                               query_protein=s_protein,
-                               query_symbol=orthology['source'].get('symbol'),
-                               query_pos=pos,
-                               query_aa=s_seq[s_start:s_stop + 1],
-                               ref_aa=s_seq[s_start:s_stop + 1],
-                               alt_aa=csq['var_aa'],
-                               homolog_gene=t_id,
-                               homolog_protein=t_protein,
-                               homolog_symbol=orthology['target'].get(
-                                   'symbol'),
-                               orthology_type=orthology['type'],
-                               species=orthology['target']['species'],
-                               percent_id=orthology['target']['perc_id'],
-                               percent_pos=orthology['target']['perc_pos'],
-                               homolog_pos=o_start if o_start == o_stop
-                               else "{}-{}".format(o_start, o_stop),
-                               query_seq=s_seq,
-                               homolog_seq=t_seq,
-                               query_species=orthology['source']['species'],
-                               homolog_aa=aa,
-                               variant_description=csq['description'],
-                               variant_start=csq['start'],
-                               variant_stop=csq['stop'],
-                               variant_aa=csq['ref_aa'],
-                               features=f)
-                    results.append(res)
-            # TODO - paralogs!
+                paralogs = gene_orthologies[rb.genes[i]]['paralogs'].get(
+                    orthology['target']['id'])
+                res = features_from_homology(homology=orthology,
+                                             record=rb.record,
+                                             start=csq['start'],
+                                             stop=csq['stop'],
+                                             pos=pos,
+                                             csq=csq,
+                                             paralogs=paralogs)
+                results.extend(res)
     return results
 
 
 def write_results_table(results, fh):
-    fh.write("\n".join(["\t".join([str(res[x.lower()]) for x in variant_fields +
-                                   result_header_fields] +
+    fh.write("\n".join(["\t".join([str(res[x.lower()]) for x in variant_fields
+                                   + result_header_fields] +
                                   [str(res['features'][x]) for x in
                                    uniprot_lookups.feat_fields]) for res in
-                        results]))
+                        results if res['should_output']]))
 
 
 def annotate_variants(args):

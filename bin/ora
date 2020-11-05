@@ -74,8 +74,10 @@ def add_vcf_argparser(subparsers):
                         the output will be compressed with gzip. If not
                         provided will default to STDOUT.''')
     parser.add_argument("--paralog_lookups", action='store_true',
-                        help='''Also perform homology lookups on paralogs
-                        identified. CURRENTLY UNIMPLEMENTED.''')
+                        help='''Also perform ortholog lookups on paralogs
+                        identified. Likely to significantly increase runtime
+                        but may uncover overlapping features from orthologs of
+                        paralogs identified.''')
     parser.add_argument("-a", "--alignments", metavar='FILE',
                         help='''Output alignments of hits to this file. If the
                         filename ends with '.gz' the output will be compressed
