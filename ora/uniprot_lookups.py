@@ -4,7 +4,7 @@ import logging
 import os
 from collections import defaultdict
 
-logger = logging.getLogger("Uniprot Lookups")
+logger = logging.getLogger("ORA Uniprot")
 logger.setLevel(logging.INFO)
 formatter = logging.Formatter(
     '[%(asctime)s] %(name)s - %(levelname)s - %(message)s')
