@@ -25,12 +25,12 @@ snv_re = re.compile(r'''p.([A-z]{3})  # first amino acid
                         (\d+)         # position
                         ([A-z]{3})$   # AA if SNV, "del" or "dup" if 1 AA indel
                     ''', re.X)
-indel_re = re.compile(r'''p.([A-z]{3})           # first amino acid
+indel_re = re.compile(r'''p.([A-z]{3})      # first amino acid
                             (\d+)           # start position
-                            _([A-z]{3})          # end amino acid
+                            _([A-z]{3})     # end amino acid
                             (\d+)           # end position
                             (ins|del|dup)   # indel type
-                            (\w+)?$         # optional amino acids
+                            (\w+)?$         # optional amino acids or 'delins'
                         ''', re.X)
 
 
@@ -54,23 +54,28 @@ def get_csqs(record, csq_types=['missense_variant', 'inframe_deletion',
 
 def parse_amino_acids(csq):
     '''
+        Return reference amino acid(s), variant amino acid(s), protein start
+        position, protein end position and variant description from standard
+        VEP fields. Used as a basic fallback when HGVSp information is
+        unavailable.
+
         SNV - unchanged
-        'K', 'E', 100, 100 => 'K', 'E', 100, 100
+        'K', 'E', 100, 100 => 'K', 'E', 100, 100, 'K100E'
 
         DELETION
-        'KD', 'K', 100, 101 => 'D', '-', 101, 101
+        'KD', 'K', 100, 101 => 'D', '-', 101, 101, '101delD'
 
         DELETION
-        'KDL', 'K', 100, 102 => 'DL', '-', 101, 102
+        'KDL', 'K', 100, 102 => 'DL', '-', 101, 102, '101_102_delDL'
 
         INSERTION
-        'K', 'KQ', 100, 100 => 'K', 'Q', 100, 101
+        'K', 'KQ', 100, 100 => 'K', 'Q', 100, 101, '100_101_insQ'
 
         INSERTION
-        'K', 'KQR', 100, 100 => '-', 'QR', 100, 101
+        'K', 'KQR', 100, 100 => '-', 'QR', 100, 101, '100_101insQR'
 
         INSERTION
-        'KQQ', 'KQQQR', 100, 100 => '-', 'QR', 102, 103
+        'KQQ', 'KQQQR', 100, 100 => '-', 'QR', 102, 103, '102_103_insQR'
 
     '''
     ref, var = csq['Amino_acids'].split('/')
@@ -116,6 +121,11 @@ def parse_amino_acids(csq):
 
 
 def parse_hgvsp(hgvsp):
+    '''
+        Return protein ID, reference amino acid(s), variant amino acid(s),
+        protein start and protein end positions extracted from HGVSp
+        annotation from VEP
+    '''
     protein, hgvs = hgvsp.split(':')
     ensp, version = protein.split('.')
     match = indel_re.match(hgvs)
@@ -159,6 +169,26 @@ def parse_csq(csq):
 
 def features_from_homology(homology, record, start, stop, pos, csq,
                            paralogs=None, skip_paralogs=False):
+    '''
+        Args:
+                homology:
+                     single result generated get_orthologies method
+
+                record:
+                     corresponding VcfRecord
+
+                start:
+                     variant start position in protein
+
+                stop:
+                     end position of variant in protein
+
+                pos: arbitrary label for variant position
+
+                csq: VEP CSQ annotation for variant (i.e. a single entry from
+                     VcfRecord.CSQ attribute)
+
+    '''
     if skip_paralogs and 'paralog' in homology['type']:
         return []
     results = []
