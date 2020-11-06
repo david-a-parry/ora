@@ -373,7 +373,7 @@ def write_results_table(results, fh):
                                    + result_header_fields] +
                                   [str(res['features'][x]) for x in
                                    uniprot_lookups.feat_fields]) for res in
-                        results if res['should_output']]))
+                        results if res['should_output']]) + "\n")
 
 
 def annotate_variants(args):
