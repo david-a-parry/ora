@@ -8,6 +8,7 @@ from collections import namedtuple
 from ora import uniprot_lookups
 from ora.alignments import align_pos_to_amino_acid, align_range_to_amino_acid
 from ora.alignments import get_align_pos, write_alignments
+from ora.alignments import pairwise_align_score, score_alignment
 from ora.local import ensg_lookup, get_homologies
 from ora.homology_parser import header_fields as result_header_fields
 from vase.vcf_reader import VcfReader
@@ -18,6 +19,7 @@ ReadBuffer = namedtuple('ReadBuffer', 'record genes csqs')
 variant_fields = ['Chromosome', 'Position', 'ID', 'Ref', 'Alt', 'Ref_AA',
                   'Alt_AA']
 result_header_fields = [x for x in result_header_fields if x != 'Query_AA']
+result_header_fields.insert(-1, 'Alt_Score')
 header_fields = (variant_fields + result_header_fields +
                  uniprot_lookups.feat_fields)
 
@@ -168,7 +170,8 @@ def parse_csq(csq):
 
 
 def features_from_homology(homology, record, start, stop, pos, csq,
-                           paralogs=None, skip_paralogs=False):
+                           paralogs=None, skip_paralogs=False,
+                           score_flanks=10):
     '''
         Args:
                 homology:
@@ -185,8 +188,12 @@ def features_from_homology(homology, record, start, stop, pos, csq,
 
                 pos: arbitrary label for variant position
 
-                csq: VEP CSQ annotation for variant (i.e. a single entry from
-                     VcfRecord.CSQ attribute)
+                csq: VEP CSQ annotation for variant (i.e. a single entry
+                     from VcfRecord.CSQ attribute)
+
+                score_flanks:
+                     get alignment score for this many residues either
+                     side of the start/stop positions
 
     '''
     if skip_paralogs and 'paralog' in homology['type']:
@@ -275,6 +282,18 @@ def features_from_homology(homology, record, start, stop, pos, csq,
         results.append(para_res)
     if ufeats is None:
         return results
+    query_aa = s_seq[align_start:align_stop + 1]
+    homolog_aa = t_seq[align_start:align_stop + 1]
+    residue_score = score_alignment(query_aa, homolog_aa)
+    if len(query_aa) == len(csq['var_aa']):
+        alt_score = score_alignment(query_aa, csq['var_aa'])
+    else:
+        alt_score = pairwise_align_score(query_aa.replace('-', ''),
+                                         csq['var_aa'].replace('-', ''))
+    f_start = align_start - score_flanks
+    f_stop = align_stop + score_flanks + 1
+    flank_score = score_alignment(s_seq[f_start:f_stop],
+                                  t_seq[f_start:f_stop])
     for f in ufeats:
         res = dict(chromosome=record.chrom,
                    position=record.pos,
@@ -285,8 +304,8 @@ def features_from_homology(homology, record, start, stop, pos, csq,
                    query_protein=s_protein,
                    query_symbol=s_symbol,
                    query_pos=pos,
-                   query_aa=s_seq[align_start:align_stop + 1],
-                   ref_aa=s_seq[align_start:align_stop + 1],
+                   query_aa=query_aa,
+                   ref_aa=query_aa,
                    alt_aa=csq['var_aa'],
                    homolog_gene=t_id,
                    homolog_protein=t_protein,
@@ -300,11 +319,14 @@ def features_from_homology(homology, record, start, stop, pos, csq,
                    query_seq=s_seq,
                    homolog_seq=t_seq,
                    query_species=homology['source']['species'],
-                   homolog_aa=aa,
+                   homolog_aa=homolog_aa,
                    variant_description=csq['description'],
                    variant_start=start,
                    variant_stop=stop,
                    features=f,
+                   residue_score=residue_score,
+                   alt_score=alt_score,
+                   flank_score=flank_score,
                    should_output=True)
         results.append(res)
     return results
@@ -324,6 +346,13 @@ def process_buffer(record_buffer, gene_orthologies):
                 csq['start'],
                 csq['stop'])
             if source_features is not None:
+                residue_score = score_alignment(csq['ref_aa'], csq['ref_aa'])
+                if len(csq['ref_aa']) == len(csq['var_aa']):
+                    alt_score = score_alignment(csq['ref_aa'], csq['var_aa'])
+                else:
+                    alt_score = pairwise_align_score(
+                        csq['ref_aa'].replace('-', ''),
+                        csq['var_aa'].replace('-', ''))
                 for f in source_features:
                     res = dict(chromosome=rb.record.chrom,
                                position=rb.record.pos,
@@ -348,6 +377,9 @@ def process_buffer(record_buffer, gene_orthologies):
                                homolog_aa=csq['ref_aa'],
                                query_species='human',
                                features=f,
+                               residue_score=residue_score,
+                               alt_score=alt_score,
+                               flank_score=None,
                                should_output=True)
                     results.append(res)
             if gene_orthologies[rb.genes[i]] is None:

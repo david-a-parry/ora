@@ -1,4 +1,5 @@
 from ora.alignments import get_align_pos, align_pos_to_amino_acid
+from ora.alignments import score_alignment
 from collections import namedtuple, defaultdict
 from ora.uniprot_lookups import get_uniprot_features, feat_fields
 
@@ -7,11 +8,13 @@ uniprot_lookups = set()
 header_fields = ['Query_Symbol', 'Query_Gene', 'Query_Protein', 'Query_Pos',
                  'Query_AA', 'Homolog_Symbol', 'Homolog_Gene',
                  'Homolog_Protein', 'Orthology_Type', 'Species', 'Percent_ID',
-                 'Percent_Pos', 'Homolog_Pos', 'Homolog_AA']
+                 'Percent_Pos', 'Homolog_Pos', 'Homolog_AA', 'Residue_Score',
+                 'Flank_Score']
 
 
 def parse_homology_data(homs, positions, logger, protein_id=None,
-                        skip_paralogs=False, output_all_orthologs=False):
+                        skip_paralogs=False, output_all_orthologs=False,
+                        score_flanks=10):
     '''
         From a list of homologies (generated from Ensembl REST look-ups
         or ora.local_lookups) return results detailing homologies and any
@@ -37,6 +40,10 @@ def parse_homology_data(homs, positions, logger, protein_id=None,
             output_all_orthologs:
                    set 'should_output' to True for all ortholog results
                    even if no overlapping Uniprot features are identified.
+
+            score_flanks:
+                   get alignment score for this many residues either side
+                   of the start/stop positions
 
     '''
     paralogs = defaultdict(list)
@@ -72,6 +79,8 @@ def parse_homology_data(homs, positions, logger, protein_id=None,
                             homolog_aa=s_seq[p],
                             query_species=homs[i]['source']['species'],
                             features=f,
+                            residue_score=score_alignment(s_seq[p], s_seq[p]),
+                            flank_score=None,
                             should_output=True)
                         results.append(result)
                 uniprot_lookups.add((s_protein, pos))
@@ -86,6 +95,11 @@ def parse_homology_data(homs, positions, logger, protein_id=None,
             if 'paralog' in hom_type and o > 0:
                 paralogs[t_id].append(ParalogLookup(t_id, t_protein, o))
             if o > 0 and (t_protein, o) not in uniprot_lookups:
+                residue_score = score_alignment(s_seq[p], t_seq[p])
+                f_start = p - score_flanks
+                f_stop = p + score_flanks + 1
+                flank_score = score_alignment(s_seq[f_start:f_stop],
+                                              t_seq[f_start:f_stop])
                 result_template = dict(
                                     query_gene=s_id,
                                     query_protein=s_protein,
@@ -106,6 +120,8 @@ def parse_homology_data(homs, positions, logger, protein_id=None,
                                     homolog_seq=t_seq,
                                     query_species=homs[i]['source']['species'],
                                     homolog_aa=aa,
+                                    residue_score=residue_score,
+                                    flank_score=flank_score,
                                     should_output=False)
                 ufeats = get_uniprot_features(t_protein, o, o)
                 if ufeats:

@@ -1,11 +1,11 @@
 import re
-import Bio
 from Bio import __version__ as bio_version
 if bio_version < '1.77':
     from Bio.SubsMat.MatrixInfo import pam250
 else:
     from Bio.Align import substitution_matrices
     pam250 = substitution_matrices.load('PAM250')
+from Bio import pairwise2
 
 cigar_re = re.compile('(\d+)?([\D])')
 non_gap_re = re.compile('[^-]')
@@ -101,6 +101,43 @@ def get_conservation_symbol(aa1, aa2):
 
 def conservation_status(seq1, seq2):
     return ''.join(get_conservation_symbol(x, y) for x, y in zip(seq1, seq2))
+
+
+def score_alignment(seq1, seq2, matrix=pam250, gap_open=-3, gap_extend=-1):
+    '''
+        Provide aligned sequences of same length with gaps represented by '-'
+        characters.
+    '''
+    gap1 = False
+    gap2 = False
+    score = 0
+    for i in range(len(seq1)):
+        if seq1[i] == '-' and seq2[i] != '-':
+            gap2 = False
+            if gap1:
+                score += gap_extend
+            else:
+                gap1 = True
+                score += gap_open
+        elif seq1[i] != '-' and seq2[i] == '-':
+            gap1 = False
+            if gap2:
+                score += gap_extend
+            else:
+                gap2 = True
+                score += gap_open
+        elif seq1[i] != '-' and seq2[i] != '-':
+            gap1 = False
+            gap2 = False
+            score += matrix.get((seq1[i], seq2[i]),
+                                matrix.get((seq2[i], seq1[i]), -20))
+    return score
+
+
+def pairwise_align_score(seq1, seq2, matrix=pam250, gap_open=-3,
+                         gap_extend=-1):
+    return pairwise2.align.globalds(seq1, seq2,  matrix, gap_open, gap_extend,
+                                    score_only=True)
 
 
 def arrange_labels(label_tups, line_length, l_margin):
