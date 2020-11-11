@@ -170,7 +170,7 @@ def parse_csq(csq):
         except ValueError:
             logger.warn("Could not parse HGVSp annotation" +
                         "'{}' - falling back to  basic VEP annotations".format(
-                            csq['hgvsp']))
+                            csq['HGVSp']))
     akeys = ['ref_aa', 'var_aa', 'start', 'stop', 'description']
     result.update(dict((k, v) for k, v in zip(akeys, parse_amino_acids(csq))))
     return result
