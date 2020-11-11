@@ -172,7 +172,13 @@ def parse_csq(csq):
                         "'{}' - falling back to  basic VEP annotations".format(
                             csq['HGVSp']))
     akeys = ['ref_aa', 'var_aa', 'start', 'stop', 'description']
-    result.update(dict((k, v) for k, v in zip(akeys, parse_amino_acids(csq))))
+    try:
+        result.update(dict((k, v) for k, v in zip(akeys,
+                                                  parse_amino_acids(csq))))
+    except ValueError:
+        logger.warn("Could not parse Amino_acids '{}' and position '{}'"
+                    .format(csq['Amino_acids'], csq['Protein_position']))
+        return None
     return result
 
 
@@ -344,6 +350,10 @@ def process_buffer(record_buffer, gene_orthologies):
     for rb in record_buffer:
         for i in range(len(rb.genes)):
             csq = parse_csq(rb.csqs[i])
+            if csq is None:
+                logger.warn("Skipping consequence {}".format(
+                            rb.csqs[i]['HGVSp']))
+                continue
             if csq['start'] == csq['stop']:
                 pos = csq['start']
             else:
