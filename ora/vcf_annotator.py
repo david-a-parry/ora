@@ -36,6 +36,10 @@ indel_re = re.compile(r'''p.([A-z]{3})      # first amino acid
                         ''', re.X)
 
 
+class HgvspError(ValueError):
+    pass
+
+
 def get_orthologies(gene, cursor, paralog_lookups=False):
     gene_lookup = ensg_lookup(gene, cursor)
     homology_data = get_homologies(gene_lookup, cursor)
@@ -130,30 +134,33 @@ def parse_hgvsp(hgvsp):
     '''
     protein, hgvs = hgvsp.split(':')
     ensp, version = protein.split('.')
-    match = indel_re.match(hgvs)
-    if match:
-        ref, start, var, stop, indel, insertion = match.groups()
-        return (ensp,
-                protein_letters_3to1[ref],
-                protein_letters_3to1[var],
-                int(start),
-                int(stop))
-    match = snv_re.match(hgvs)
-    if match:  # either SNV or single AA deletion or single AA duplication
-        ref, start, var = match.groups()
-        start = int(start)
-        ref = protein_letters_3to1[ref]
-        if var == 'del':
-            var = '-'
-            stop = start
-        elif var == 'dup':
-            var = ref + ref
-            stop = start + 1
-        else:
-            var = protein_letters_3to1[var]
-            stop = start
-        return (ensp, ref, var, start, stop)
-    raise ValueError("Could not parse HGVSp annotation '{}'".format(hgvsp))
+    try:
+        match = indel_re.match(hgvs)
+        if match:
+            ref, start, var, stop, indel, insertion = match.groups()
+            return (ensp,
+                    protein_letters_3to1[ref],
+                    protein_letters_3to1[var],
+                    int(start),
+                    int(stop))
+        match = snv_re.match(hgvs)
+        if match:  # either SNV or single AA deletion or single AA duplication
+            ref, start, var = match.groups()
+            start = int(start)
+            ref = protein_letters_3to1[ref]
+            if var == 'del':
+                var = '-'
+                stop = start
+            elif var == 'dup':
+                var = ref + ref
+                stop = start + 1
+            else:
+                var = protein_letters_3to1[var]
+                stop = start
+            return (ensp, ref, var, start, stop)
+    except KeyError:
+        raise HgvspError("Failed to parse amino acids in {}".format(hgvsp))
+    raise HgvspError("Could not parse HGVSp annotation '{}'".format(hgvsp))
 
 
 def parse_csq(csq):
@@ -167,7 +174,7 @@ def parse_csq(csq):
                                zip(hkeys, parse_hgvsp(csq['HGVSp']))))
             result['description'] = csq['HGVSp']
             return result
-        except ValueError:
+        except HgvspError:
             logger.warn("Could not parse HGVSp annotation" +
                         "'{}' - falling back to  basic VEP annotations".format(
                             csq['HGVSp']))
