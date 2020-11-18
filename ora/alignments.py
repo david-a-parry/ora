@@ -103,7 +103,8 @@ def conservation_status(seq1, seq2):
     return ''.join(get_conservation_symbol(x, y) for x, y in zip(seq1, seq2))
 
 
-def score_alignment(seq1, seq2, matrix=pam250, gap_open=-3, gap_extend=-1):
+def score_alignment(seq1, seq2, matrix=pam250, gap_open=-3, gap_extend=-1,
+                    default_penalty=-20):
     '''
         Provide aligned sequences of same length with gaps represented by '-'
         characters.
@@ -130,7 +131,8 @@ def score_alignment(seq1, seq2, matrix=pam250, gap_open=-3, gap_extend=-1):
             gap1 = False
             gap2 = False
             score += matrix.get((seq1[i], seq2[i]),
-                                matrix.get((seq2[i], seq1[i]), -20))
+                                matrix.get((seq2[i], seq1[i]),
+                                           default_penalty))
     return score
 
 
