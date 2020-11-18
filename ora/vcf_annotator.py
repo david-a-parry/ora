@@ -7,8 +7,7 @@ from Bio.Data.IUPACData import protein_letters_3to1
 from collections import namedtuple
 from ora import uniprot_lookups
 from ora.alignments import align_pos_to_amino_acid, align_range_to_amino_acid
-from ora.alignments import get_align_pos, write_alignments
-from ora.alignments import pairwise_align_score, score_alignment
+from ora.alignments import get_align_pos, write_alignments, score_alignment
 from ora.local import ensg_lookup, get_homologies
 from ora.homology_parser import header_fields as result_header_fields
 from vase.vcf_reader import VcfReader
@@ -19,6 +18,7 @@ ReadBuffer = namedtuple('ReadBuffer', 'record genes csqs')
 variant_fields = ['Chromosome', 'Position', 'ID', 'Ref', 'Alt', 'Ref_AA',
                   'Alt_AA']
 result_header_fields = [x for x in result_header_fields if x != 'Query_AA']
+result_header_fields.insert(0, 'Variant_Description')
 result_header_fields.insert(-1, 'Alt_Score')
 header_fields = (variant_fields + result_header_fields +
                  uniprot_lookups.feat_fields)
@@ -58,6 +58,32 @@ def get_csqs(record, csq_types=['missense_variant', 'inframe_deletion',
             if y in csq_types]
 
 
+def trim_ref_alt(ref, alt):
+    if len(ref) > len(alt):
+        adjust = 0
+        while len(alt) > 0:
+            if ref[0] == alt[0]:
+                ref = ref[1:]
+                alt = alt[1:]
+                adjust += 1
+            else:
+                break
+        if alt == '':
+            alt = '-'
+    elif len(ref) < len(alt):
+        adjust = -1
+        while len(ref) > 0:
+            if ref[0] == alt[0]:
+                ref = ref[1:]
+                alt = alt[1:]
+                adjust += 1
+            else:
+                break
+        if ref == '':
+            ref = '-'
+    return ref, alt, adjust
+
+
 def parse_amino_acids(csq):
     '''
         Return reference amino acid(s), variant amino acid(s), protein start
@@ -91,58 +117,43 @@ def parse_amino_acids(csq):
         stop = start
     else:
         stop = int(positions[1])
-    if len(ref) > len(var):
-        while len(var) > 0:
-            if ref[0] == var[0]:
-                ref = ref[1:]
-                var = var[1:]
-                start += 1
-            else:
-                break
-        if var == '':
-            var = '-'
-        if start == stop:
-            description = "{}del{}".format(start, ref)
-        else:
-            description = "{}_{}del{}".format(start, stop, ref)
-    elif len(ref) < len(var):
+    if len(ref) != len(var):
         original_ref = ref
-        start_adjust = -1
-        while len(ref) > 0:
-            if ref[0] == var[0]:
-                ref = ref[1:]
-                var = var[1:]
-                start_adjust += 1
-            else:
-                break
-        if ref == '':
-            ref = '-'
+        ref, var, start_adjust = trim_ref_alt(ref, var)
         if start_adjust > 0:
-            start == start_adjust
-        stop = start + 1
-        description = "{}{}_{}ins{}".format(original_ref, start, stop, var)
+            start += start_adjust
+        if var == '-' or len(ref) < len(var):
+            if start == stop:
+                description = "{}del{}".format(start, ref)
+            else:
+                description = "{}_{}del{}".format(start, stop, ref)
+        else:
+            stop = start + 1
+            description = "{}{}_{}ins{}".format(original_ref, start, stop, var)
     else:
         description = "{}{}{}".format(ref, start, var)
     return ref, var, start, stop, description
 
 
-def parse_hgvsp(hgvsp):
+def parse_hgvsp(csq):
     '''
         Return protein ID, reference amino acid(s), variant amino acid(s),
         protein start and protein end positions extracted from HGVSp
         annotation from VEP
     '''
-    protein, hgvs = hgvsp.split(':')
+    protein, hgvs = csq['HGVSp'].split(':')
     ensp, version = protein.split('.')
     try:
         match = indel_re.match(hgvs)
         if match:
-            ref, start, var, stop, indel, insertion = match.groups()
-            return (ensp,
-                    protein_letters_3to1[ref],
-                    protein_letters_3to1[var],
-                    int(start),
-                    int(stop))
+            h_ref, start, h_ref_end, stop, indel, insertion = match.groups()
+            try:
+                ref, alt, _ = trim_ref_alt(*csq['Amino_acids'].split('/'))
+                return (ensp, ref, alt, int(start), int(stop))
+            except ValueError:
+                raise HgvspError("Could not parse amino acids ({})".format(
+                    csq['Amino_acids']) + "for HGVSp annotation '{}'".format(
+                        csq['HGVSp']))
         match = snv_re.match(hgvs)
         if match:  # either SNV or single AA deletion or single AA duplication
             ref, start, var = match.groups()
@@ -159,8 +170,10 @@ def parse_hgvsp(hgvsp):
                 stop = start
             return (ensp, ref, var, start, stop)
     except KeyError:
-        raise HgvspError("Failed to parse amino acids in {}".format(hgvsp))
-    raise HgvspError("Could not parse HGVSp annotation '{}'".format(hgvsp))
+        raise HgvspError("Failed to parse amino acids in {}".format(
+            csq['HGVSp']))
+    raise HgvspError("Could not parse HGVSp annotation '{}'".format(
+        csq['HGVSp']))
 
 
 def parse_csq(csq):
@@ -171,7 +184,7 @@ def parse_csq(csq):
         hkeys = ['protein', 'ref_aa', 'var_aa', 'start', 'stop']
         try:
             result.update(dict((k, v) for k, v in
-                               zip(hkeys, parse_hgvsp(csq['HGVSp']))))
+                               zip(hkeys, parse_hgvsp(csq))))
             result['description'] = csq['HGVSp']
             return result
         except HgvspError:
@@ -308,8 +321,7 @@ def features_from_homology(homology, record, start, stop, pos, csq,
     if len(query_aa) == len(csq['var_aa']):
         alt_score = score_alignment(query_aa, csq['var_aa'])
     else:
-        alt_score = pairwise_align_score(query_aa.replace('-', ''),
-                                         csq['var_aa'].replace('-', ''))
+        alt_score = None
     f_start = align_start - score_flanks
     f_stop = align_stop + score_flanks + 1
     flank_score = score_alignment(s_seq[f_start:f_stop],
@@ -352,7 +364,7 @@ def features_from_homology(homology, record, start, stop, pos, csq,
     return results
 
 
-def process_buffer(record_buffer, gene_orthologies):
+def process_buffer(record_buffer, gene_orthologies, curr):
     results = []
     for rb in record_buffer:
         for i in range(len(rb.genes)):
@@ -374,9 +386,7 @@ def process_buffer(record_buffer, gene_orthologies):
                 if len(csq['ref_aa']) == len(csq['var_aa']):
                     alt_score = score_alignment(csq['ref_aa'], csq['var_aa'])
                 else:
-                    alt_score = pairwise_align_score(
-                        csq['ref_aa'].replace('-', ''),
-                        csq['var_aa'].replace('-', ''))
+                    alt_score = None
                 for f in source_features:
                     res = dict(chromosome=rb.record.chrom,
                                position=rb.record.pos,
@@ -403,6 +413,7 @@ def process_buffer(record_buffer, gene_orthologies):
                                features=f,
                                residue_score=residue_score,
                                alt_score=alt_score,
+                               variant_description=csq['description'],
                                flank_score=None,
                                should_output=True)
                     results.append(res)
@@ -480,7 +491,9 @@ def annotate_variants(args):
             if csqs:
                 these_genes = [x['Gene'] for x in csqs]
                 if current_genes.isdisjoint(set(these_genes)):
-                    results = process_buffer(record_buffer, gene_orthologies)
+                    results = process_buffer(record_buffer,
+                                             gene_orthologies,
+                                             curr)
                     if results:
                         write_results_table(results, out_fh)
                         if aln_fh is not None:
@@ -501,7 +514,7 @@ def annotate_variants(args):
                         logger.warn("Gene ID '{}' not present in database"
                                     .format(gene))
                         gene_orthologies[gene] = None
-    results = process_buffer(record_buffer, gene_orthologies)
+    results = process_buffer(record_buffer, gene_orthologies, curr)
     if results:
         write_results_table(results, out_fh)
         if aln_fh is not None:
