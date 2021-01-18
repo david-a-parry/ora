@@ -207,8 +207,9 @@ def get_options():
     parser = argparse.ArgumentParser(
         description='''Parse Uniprot/Swissprot flat file into tables required
         by ORA''')
-    parser.add_argument('data_file', help='''Uniprot flat file (gzipped is fine)
-    to process (e.g. text file from https://www.uniprot.org/downloads).''')
+    parser.add_argument('data_file', help='''Uniprot flat file (gzipped is
+    fine) to process (e.g. text file from
+    https://www.uniprot.org/downloads).''')
     parser.add_argument('output_prefix', help='''Prefix for output files. This
     program will create files named <prefix>.features.tab.gz,
     <prefix>.seq_vars.tab.gz, <prefix>.ens_ids.tab.gz and optionally
