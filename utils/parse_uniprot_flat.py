@@ -15,9 +15,10 @@ ch.setLevel(logger.level)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-#iso_re = re.compile(r'IsoId=(\w+)(-\d+); Sequence=(.*?);')
 iso_re = re.compile(r'IsoId=(\w+)(-\d+),*?.*?;\s+Sequence=(.*?);')
 var_seq_re = re.compile(r'[A-Z]+ -> ([A-Z]+) ')
+dis_re = re.compile(r'DISEASE: (.+?) \((.+?)\)')
+
 feature_outputs = {'ACT_SITE', 'BINDING', 'CARBOHYD', 'CROSSLNK', 'DISULFID',
                    'LIPID', 'METAL', 'MOD_RES', 'MUTAGEN', 'NON_STD', 'REGION',
                    'SITE', 'VARIANT'}
@@ -76,6 +77,9 @@ def parse_record(record, featfile, varfile, ensfile, seqfile=None):
                                  iso,
                                  str(int(iso == display_isoform)),
                                  seq)) + '\n')
+    disease_matches = (dis_re.match(x).groups() for x in record.comments if
+                       dis_re.match(x))
+    disease_acronyms = dict((x[1], x[0]) for x in disease_matches)
     for ft in (x for x in record.features if x.type in feature_outputs):
         if ft.type == 'DISULFID':
             # only interested in start and stop amino acids
@@ -107,6 +111,16 @@ def parse_record(record, featfile, varfile, ensfile, seqfile=None):
                                           str(ft.location.start),
                                           str(ft.location.end),
                                           ft.qualifiers['note'])) + '\n')
+        elif ft.type == 'VARIANT':
+            note = ft.qualifiers['note']
+            for k, v in disease_acronyms.items():
+                if k in note:
+                    note = note.replace(k, v, 1)
+            featfile.write('\t'.join((canonical,
+                                      ft.type,
+                                      str(ft.location.start),
+                                      str(ft.location.end),
+                                      note)) + '\n')
         else:
             try:
                 featfile.write('\t'.join((canonical,
