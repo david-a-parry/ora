@@ -150,18 +150,18 @@ def get_var_seqs(record):
 
 
 def construct_seq(isoform, seq, mods, variants):
-    vars = []
+    variations = []
     for mod in mods.split(', '):
         var = variants.get(mod.strip())
         if var is None:
             logger.warn("Got unexpected VAR_SEQ: '{}' ".format(mod) +
                         "for isoform '{}'".format(isoform))
             continue
-        vars.append(var)
+        variations.append(var)
     # Apply variants starting from end of sequence, else mod coordinates will
     # not be accurate for downstream modifications anymore
-    vars.sort(key=lambda x: (x['start'], x['stop']), reverse=True)
-    for var in vars:
+    variations.sort(key=lambda x: (x['start'], x['stop']), reverse=True)
+    for var in variations:
         seq = seq[:var['start']] + var['seq'] + seq[var['stop']:]
     return seq
 
