@@ -59,7 +59,7 @@ def get_csqs(record, csq_types=['missense_variant', 'inframe_deletion',
 
 
 def trim_ref_alt(ref, alt):
-    if len(ref) > len(alt):
+    if len(ref) >= len(alt):
         adjust = 0
         while len(alt) > 0:
             if ref[0] == alt[0]:
