@@ -36,10 +36,15 @@ indel_re = re.compile(r'''p.([A-z]{3})      # first amino acid
                             (\d+)           # end position
                             (ins|del|dup)   # indel type
                             (\w+)?$         # optional amino acids or 'delins'
-                        ''', re.X)
-
+                      ''', re.X)
+delins_re = re.compile(r'''p.([A-z]{3})     # first amino acid
+                            (\d+)           # start position
+                            del(ins\w+)$    # inserted amino acids
+                       ''', re.X)
+protein_letters_3to1['Ter'] = '*'
 csq_types = ['missense_variant', 'inframe_deletion', 'inframe_insertion',
-             'conservative_inframe_deletion', 'conservative_inframe_insertion']
+             'conservative_inframe_deletion', 'conservative_inframe_insertion',
+             'disruptive_inframe_deletion', 'disruptive_inframe_insertion']
 enst2ensp = None
 
 
@@ -82,12 +87,20 @@ def snpeff2vep(ann, curr):
     csq['ENSP'] = ensp
     csq['HGVSp'] = "{}:{}".format(ensp, ann['HGVS.p'])
     indel_match = indel_re.match(ann['HGVS.p'])
+    delins_match = delins_re.match(ann['HGVS.p'])
     refaa = '?'
     varaa = '?'
-    if indel_match:
-        ref, start, ref_end, stop, indel, insertion = indel_match.groups()
+    if indel_match or delins_match:
+        if indel_match:
+            ref, start, ref_end, stop, indel, insertion = indel_match.groups()
+        else:
+            ref, start, insertion = delins_match.groups()
+            stop = start
+            indel = 'del'
         pos = "{}-{}".format(start, stop)
-        if int(stop) == int(start) + 1:
+        if stop == start:
+            refaa = protein_letters_3to1[ref]
+        elif int(stop) == int(start) + 1:
             refaa = protein_letters_3to1[ref] + protein_letters_3to1[ref_end]
         else:
             curr.execute('''SELECT sequence from sequence JOIN seq_member ON
@@ -228,9 +241,15 @@ def parse_hgvsp(csq):
     protein, hgvs = csq['HGVSp'].split(':')
     ensp = ens_version_re.sub('', protein)
     try:
-        match = indel_re.match(hgvs)
-        if match:
-            h_ref, start, h_ref_end, stop, indel, insertion = match.groups()
+        indel_match = indel_re.match(hgvs)
+        delins_match = delins_re.match(hgvs)
+        if indel_match or delins_match:
+            if indel_match:
+                h_ref, start, h_ref_end, stop, indel, insertion = \
+                    indel_match.groups()
+            else:
+                h_ref, start, insertion = delins_match.groups()
+                stop = start
             try:
                 ref, alt, _ = trim_ref_alt(*csq['Amino_acids'].split('/'))
                 return (ensp, ref, alt, int(start), int(stop))
