@@ -85,6 +85,13 @@ def add_vcf_argparser(subparsers):
     parser.add_argument("--line_length", type=int, default=60, metavar='N',
                         help='''Length of sequence lines in alignment output.
                         Default=60.''')
+    parser.add_argument("--snpeff_mode", action='store_true',
+                        help='''Force SnpEff mode. Applicable if your input has
+                        both SnpEff and VEP annotations. Default behaviour is
+                        to autodetect VEP and SnpEff annotations with VEP
+                        annotations used by default if available and SnpEff
+                        annotations used if VEP annotations are not
+                        present.''')
     parser.add_argument("--progress", type=int, metavar='N', default=10_000,
                         help='''Report progress every N variants. Default is
                         10_000. Set to 0 to turn off progress reporting.''')

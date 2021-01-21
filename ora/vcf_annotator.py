@@ -1,5 +1,7 @@
+import csv
 import gzip
 import logging
+import os
 import re
 import sqlite3
 import sys
@@ -23,6 +25,7 @@ result_header_fields.insert(-1, 'Alt_Score')
 header_fields = (variant_fields + result_header_fields +
                  uniprot_lookups.feat_fields)
 
+ens_version_re = re.compile(r"\.\d+$")
 snv_re = re.compile(r'''p.([A-z]{3})  # first amino acid
                         (\d+)         # position
                         ([A-z]{3})$   # AA if SNV, "del" or "dup" if 1 AA indel
@@ -34,6 +37,10 @@ indel_re = re.compile(r'''p.([A-z]{3})      # first amino acid
                             (ins|del|dup)   # indel type
                             (\w+)?$         # optional amino acids or 'delins'
                         ''', re.X)
+
+csq_types = ['missense_variant', 'inframe_deletion', 'inframe_insertion',
+             'conservative_inframe_deletion', 'conservative_inframe_insertion']
+enst2ensp = None
 
 
 class HgvspError(ValueError):
@@ -52,10 +59,87 @@ def get_orthologies(gene, cursor, paralog_lookups=False):
     return dict(homologies=homology_data, paralogs=paralogs)
 
 
-def get_csqs(record, csq_types=['missense_variant', 'inframe_deletion',
-                                'inframe_insertion']):
-    return [x for x in record.CSQ for y in x['Consequence'].split('&')
-            if y in csq_types]
+def read_enst2ensp_data():
+    ens_file = os.path.join(os.path.dirname(__file__),
+                            "data",
+                            "enst2ensp.txt.gz")
+    t2p = dict()
+    with gzip.open(ens_file, 'rt') as fh:
+        reader = csv.DictReader(fh, delimiter='\t')
+        for f in ('Transcript stable ID', 'Protein stable ID'):
+            if f not in reader.fieldnames:
+                raise ValueError("Invalid header for ensembl transcript to " +
+                                 "protein data file '{}'".format(ens_file))
+            for row in reader:
+                t2p[row['Transcript stable ID']] = row['Protein stable ID']
+    return t2p
+
+
+def snpeff2vep(ann, curr):
+    csq = {'SYMBOL': ann['Gene_Name'], 'Gene': ann['Gene_ID']}
+    enst = ann['Feature_ID'].split('.')[0]
+    ensp = enst2ensp.get(enst, enst)
+    csq['ENSP'] = ensp
+    csq['HGVSp'] = "{}:{}".format(ensp, ann['HGVS.p'])
+    indel_match = indel_re.match(ann['HGVS.p'])
+    refaa = '?'
+    varaa = '?'
+    if indel_match:
+        ref, start, ref_end, stop, indel, insertion = indel_match.groups()
+        pos = "{}-{}".format(start, stop)
+        if int(stop) == int(start) + 1:
+            refaa = protein_letters_3to1[ref] + protein_letters_3to1[ref_end]
+        else:
+            curr.execute('''SELECT sequence from sequence JOIN seq_member ON
+                            seq_member.sequence_id == sequence.sequence_id
+                            WHERE seq_member.stable_id == ?''', (ensp,))
+            seqs = curr.fetchone()
+            if seqs:
+                refaa = seqs[0][int(start)-1:int(stop)]
+        if indel == 'dup':
+            varaa = refaa + refaa
+        elif indel == 'del':
+            if insertion and insertion.startswith('ins'):
+                varaa = "".join(protein_letters_3to1[insertion[i:i+3]] for i in
+                                range(3, len(insertion), 3))
+            else:
+                varaa = '-'
+        elif indel == 'ins':
+            varaa = refaa + "".join(protein_letters_3to1[insertion[i:i+3]] for
+                                    i in range(0, len(insertion), 3))
+        else:
+            raise ValueError("Could not parse indel type '{}' in HGVSp '{}'"
+                             .format(indel, ann['HGVS.p']))
+    else:
+        snv_match = snv_re.match(ann['HGVS.p'])
+        if snv_match:
+            ref, pos, var = snv_match.groups()
+            refaa = protein_letters_3to1[ref]
+            if var == 'del':
+                varaa = '-'
+            elif var == 'dup':
+                var = refaa + refaa
+            else:
+                varaa = protein_letters_3to1[var]
+        else:
+            raise HgvspError("Could not parse HGVSp annotation '{}'".format(
+                ann['HGVS.p']))
+    csq['Amino_acids'] = '{}/{}'.format(refaa, varaa)
+    csq['Protein_position'] = pos
+    return csq
+
+
+def get_csqs_snpeff(record, curr):
+    csqs = []
+    for ann in (x for x in record.ANN for y in x['Annotation'].split('&') if y
+                in csq_types):
+        csqs.append(snpeff2vep(ann, curr))
+    return csqs
+
+
+def get_csqs_vep(record, curr):
+    return [x for x in record.CSQ for y in x['Consequence'].split('&') if y in
+            csq_types]
 
 
 def trim_ref_alt(ref, alt):
@@ -142,7 +226,7 @@ def parse_hgvsp(csq):
         annotation from VEP
     '''
     protein, hgvs = csq['HGVSp'].split(':')
-    ensp, version = protein.split('.')
+    ensp = ens_version_re.sub('', protein)
     try:
         match = indel_re.match(hgvs)
         if match:
@@ -443,6 +527,21 @@ def write_results_table(results, fh):
                         results if res['should_output']]) + "\n")
 
 
+def check_csq_annotations(vcf, logger):
+    try:
+        _ = vcf.header.csq_label
+        logger.info("Found VEP annotations")
+        return False
+    except KeyError:
+        try:
+            _ = vcf.header.ann_label
+            logger.info("Found SnpEff annotations")
+            return True
+        except KeyError:
+            raise ValueError("No VEP or SnpEff annotations detected in " +
+                             "input VCF header.")
+
+
 def annotate_variants(args):
     if args.silent:
         logger.setLevel(logging.ERROR)
@@ -466,6 +565,16 @@ def annotate_variants(args):
         logger.info("Connecting to local database '{}'".format(args.db))
         conn = sqlite3.connect(args.db)
         curr = conn.cursor()
+        if args.snpeff_mode:
+            snpeff_mode = True
+        else:
+            snpeff_mode = check_csq_annotations(vcf, logger)
+        if snpeff_mode:
+            get_csqs = get_csqs_snpeff
+            global enst2ensp
+            enst2ensp = read_enst2ensp_data()
+        else:
+            get_csqs = get_csqs_vep
         uniprot_lookups.initialize()
         if args.output is None:
             out_fh = sys.stdout
@@ -487,7 +596,7 @@ def annotate_variants(args):
                 logger.info("Processed {:,} VCF records. At {}:{}".format(
                     n, record.chrom, record.pos))
             n += 1
-            csqs = get_csqs(record)
+            csqs = get_csqs(record, curr)
             if csqs:
                 these_genes = [x['Gene'] for x in csqs]
                 if current_genes.isdisjoint(set(these_genes)):

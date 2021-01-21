@@ -116,15 +116,17 @@ def _features_from_uniprot():
 def _uniprot_from_ensp():
     with gzip.open(_ens_id_tab, 'rt') as tabfile:
         reader = csv.DictReader(tabfile, delimiter='\t')
-        for f in ['UniprotID', 'Protein', 'Isoform', 'Displayed']:
+        for f in ['UniprotID', 'Transcript', 'Protein', 'Isoform',
+                  'Displayed']:
             if f not in reader.fieldnames:
                 raise ValueError("Invalid header for {}".format(_ens_id_tab))
             for row in reader:
-                ensp2uniprot[row['Protein']] = dict(
-                    id=row['UniprotID'],
-                    isoform=row['Isoform'],
-                    displayed=bool(int(row['Displayed'])),
-                    variants=row['Variants'].split(','))
+                d = dict(id=row['UniprotID'],
+                         isoform=row['Isoform'],
+                         displayed=bool(int(row['Displayed'])),
+                         variants=row['Variants'].split(','))
+                ensp2uniprot[row['Protein']] = d
+                ensp2uniprot[row['Transcript']] = d
 
 
 def _read_uniprot_variants():
