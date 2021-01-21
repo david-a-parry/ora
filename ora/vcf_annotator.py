@@ -146,7 +146,14 @@ def get_csqs_snpeff(record, curr):
     csqs = []
     for ann in (x for x in record.ANN for y in x['Annotation'].split('&') if y
                 in csq_types):
-        csqs.append(snpeff2vep(ann, curr))
+        try:
+            csqs.append(snpeff2vep(ann, curr))
+        except HgvspError as e:
+            logger.error('{} at {}:{}-{}/{}'.format(e,
+                                                    record.chrom,
+                                                    record.pos,
+                                                    record.ref,
+                                                    record.alt))
     return csqs
 
 
