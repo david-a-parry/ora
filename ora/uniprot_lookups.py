@@ -88,9 +88,10 @@ def feats_from_ensp(ensp):
             span = adj['Stop'] - adj['Start']
             delta += adj['Length'] - span
         if delta is not None:
-            f['Start'] += delta
-            f['Stop'] += delta
-            adjusted_feats.append(f)
+            adj_f = f.copy()
+            adj_f['Start'] += delta
+            adj_f['Stop'] += delta
+            adjusted_feats.append(adj_f)
     feature_lookups[ensp] = adjusted_feats
     return adjusted_feats
 
